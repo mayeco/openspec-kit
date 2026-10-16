@@ -100,6 +100,19 @@ module OpenSpecKit
     end
   end
 
+  # Removes the directories that removing these files left empty, up to the target.
+  def prune_empty_dirs(target, paths)
+    paths.map { |rel| File.dirname(rel) }.uniq.each do |dir|
+      until dir == '.'
+        path = File.join(target, dir)
+        break unless Dir.exist?(path) && Dir.empty?(path)
+
+        Dir.rmdir(path)
+        dir = File.dirname(dir)
+      end
+    end
+  end
+
   def write_lock(target, manifest)
     lock = manifest.slice('name', 'version', 'source_commit', 'built_at', 'toolchain', 'files')
     lock['files'] = manifest['files'].reject { |_, f| f['class'] == 'dist' }
@@ -172,6 +185,15 @@ module OpenSpecKit
     kit.each_key { |rel| copy(source, target, rel) }
     dropped = files(old, 'kit').keys - kit.keys
     dropped.each { |rel| FileUtils.rm_f(File.join(target, rel)) }
+    # Seeds this release no longer ships: an untouched one is still the old template, so it
+    # goes; one the application edited is its data, so it stays and is reported.
+    retired = files(old, 'seed').keys - files(manifest, 'seed').keys
+    edited_seeds = retired.select do |rel|
+      path = File.join(target, rel)
+      File.exist?(path) && sha256(path) != old['files'][rel]['sha256']
+    end
+    (retired - edited_seeds).each { |rel| FileUtils.rm_f(File.join(target, rel)) }
+    prune_empty_dirs(target, dropped + retired)
     created = []
     proposed = []
     files(manifest, 'seed').each do |rel, f|
@@ -188,6 +210,8 @@ module OpenSpecKit
     puts "kit: v#{old['version']} -> v#{manifest['version']}: #{kit.size} kit files, #{dropped.size} removed, " \
          "#{created.size} seeds created"
     proposed.each { |p| puts "  review #{p}: the template changed; merge what you need, then delete it" }
+    (retired - edited_seeds).each { |rel| puts "  removed #{rel}: v#{manifest['version']} no longer ships it, and it was unchanged" }
+    edited_seeds.each { |rel| puts "  review #{rel}: v#{manifest['version']} no longer ships it; kept because you edited it, so it is yours now" }
     return unless git
 
     git(target, 'add', '-A')

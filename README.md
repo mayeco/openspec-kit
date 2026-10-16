@@ -34,7 +34,7 @@ git -C openspec-kit fetch --tags && git -C openspec-kit checkout v<new-version>
 ./openspec-kit/install.sh upgrade ../my-app
 ```
 
-The upgrade runs on a new branch `kit-upgrade-v<version>` and commits there for review. It replaces kit files and removes the ones the release dropped. When a seed template changed, it writes `<file>.new` next to your file instead of overwriting it. It refuses to run while the dispatcher or merger is running, and stops if kit files were edited in place (`--force` discards those edits).
+The upgrade runs on a new branch `kit-upgrade-v<version>` and commits there for review. It replaces kit files and removes the ones the release dropped, together with the directories left empty. A seed the release no longer ships is deleted when you never edited it, and kept (and reported) when you did. When a seed template changed, it writes `<file>.new` next to your file instead of overwriting it. It refuses to run while the dispatcher or merger is running, and stops if kit files were edited in place (`--force` discards those edits).
 
 ## Verify
 
