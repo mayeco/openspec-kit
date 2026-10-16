@@ -28,7 +28,8 @@ class OpenSpecDispatcher
   ENGINE_PLAN = ENV.fetch('AGENT_ENGINE_PLAN', DEFAULT_ENGINE)
   ENGINE_BUILD = ENV.fetch('AGENT_ENGINE_BUILD', DEFAULT_ENGINE)
   # Workers never publish: strip push credentials from their environment.
-  # (A git credential helper such as osxkeychain is not covered; see section 12.)
+  # A git credential helper such as osxkeychain is not covered: run workers as a
+  # separate OS user, or in a container without one, to keep them from pushing.
   AGENT_ENV = %w[SSH_AUTH_SOCK GH_TOKEN GITHUB_TOKEN GITLAB_TOKEN GIT_ASKPASS].to_h { |k| [k, nil] }.freeze
 
   def initialize(max_workers:, repair_attempts:, backlog_file:, wait:, dry_run:, engine_plan: ENGINE_PLAN, engine_build: ENGINE_BUILD)

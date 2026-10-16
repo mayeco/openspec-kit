@@ -28,7 +28,7 @@ for tool in git openspec ruby; do
 done
 
 echo "== Kit"
-# Kit files are replaced by upgrades and never edited in place (docs/DEV_FRK.md section 17).
+# Kit files are replaced by upgrades and never edited in place: drift fails the preflight.
 KIT_OK=1
 ruby bin/openspec_kit.rb verify . 2>&1 | sed 's/^/  /'
 [ "${PIPESTATUS[0]}" -eq 0 ] || KIT_OK=0

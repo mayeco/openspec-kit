@@ -156,8 +156,9 @@ module OpenSpecKit
     write_lock(target, manifest)
     puts "kit: installed v#{manifest['version']} into #{target} " \
          "(#{files(manifest, 'kit').size} kit files, #{seeded.size} seeds created)"
-    puts 'next: describe the project in openspec/config.yaml, add child repos under repos/, commit, then ' \
-         'schedule the cycle (.claude/skills/openspec-cycle/references/routine-prompt.md)'
+    puts 'next: fill the {{...}} placeholders in README.md and docs/README.md, describe the project in ' \
+         'openspec/config.yaml, add child repos under repos/, commit, then schedule the cycle ' \
+         '(.claude/skills/openspec-cycle/references/routine-prompt.md)'
   end
 
   def upgrade(source, target, force:)
@@ -171,7 +172,7 @@ module OpenSpecKit
     end
     if edited.any? && !force
       raise Error, "kit files were edited in place: #{edited.map { |p, s| "#{p} (#{s})" }.join(', ')}. " \
-                   'Move the edits upstream to the workbench, or pass --force to discard them'
+                   'Move the edits upstream to the framework, or pass --force to discard them'
     end
 
     branch = "kit-upgrade-v#{manifest['version']}"
@@ -243,7 +244,7 @@ module OpenSpecKit
   def verify(target)
     lock = read_json(File.join(target, LOCK))
     unless lock
-      puts "kit: no #{LOCK} (a workbench or a manual install); not verified"
+      puts "kit: no #{LOCK} (not installed with install.sh); not verified"
       return true
     end
 

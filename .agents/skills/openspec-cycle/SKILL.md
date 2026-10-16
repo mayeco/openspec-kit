@@ -98,6 +98,8 @@ Jev is a calibrated judge: it answers a typed question with a probability, never
 - **Run one now**: `bash bin/run_cycle.sh --detach`; or `bash bin/run_cycle.sh` in a terminal to watch it.
 - **Watch**: `bash bin/cycle_status.sh`, `log/cycle/cycle-<stamp>.log`, `log/cycle/reports/`, `log/events.jsonl`.
 - **Pause / resume**: `echo "<reason>" > log/PAUSE` / `rm log/PAUSE`.
-- **Unblock or approve a change**: follow the operator runbook (§14 of the framework specification): fix it, then `rm log/blocked/<change>.json`; approve a `risk_review` with `touch log/approved/<change>`.
+- **Unblock a change**: read `log/blocked/<change>.json` and `log/workers/<change>.log`. Fix the cause in `.worktrees/worker-<change>` (OpenSpec artifacts) or on `feat/spec-<change>` inside the child repository (code), delete `.needs-human` if present, then `rm log/blocked/<change>.json`. The next dispatcher run resumes the change.
+- **Approve a `risk_review`**: review the diff, `touch log/approved/<change>`, then `rm log/blocked/<change>.json`.
+- **Abandon a change**: `git worktree remove --force .worktrees/worker-<change>`, `git branch -D feat/spec-<change>`, `rm log/blocked/<change>.json`, and remove its item from `config/agent_backlog.json`.
 - **Tune**: `config/cycle.yaml` (budget, areas, caps, QA skills) and `config/jev_policy.yaml`.
 - **Start over**: delete `log/cycle/state.json`; the next cycle recreates it from the template.

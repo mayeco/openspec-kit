@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.3.1",
-  "source_commit": "91a57fdcde644e27a1a465fbb51788bea0b719dc",
+  "version": "2.3.2",
+  "source_commit": "a1cf7eb8f9fcb752547a4feb950c5ae08d640805",
   "source_dirty": false,
-  "built_at": "2026-10-16T13:35:36Z",
+  "built_at": "2026-10-16T14:08:47Z",
   "toolchain": {
     "openspec": "1.14.1",
     "git": "2.56.0",
@@ -14,7 +14,7 @@
   "files": {
     ".agents/skills/openspec-cycle/SKILL.md": {
       "class": "kit",
-      "sha256": "9784ffa5ef12d5ee249a117549119c58dd30dab4b0c1540b6a90f21a3c6997b8"
+      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
     },
     ".agents/skills/openspec-cycle/references/report.template.md": {
       "class": "kit",
@@ -34,7 +34,7 @@
     },
     ".claude/skills/openspec-cycle/SKILL.md": {
       "class": "kit",
-      "sha256": "9784ffa5ef12d5ee249a117549119c58dd30dab4b0c1540b6a90f21a3c6997b8"
+      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
     },
     ".claude/skills/openspec-cycle/references/report.template.md": {
       "class": "kit",
@@ -54,7 +54,7 @@
     },
     ".hermes/skills/openspec-cycle/SKILL.md": {
       "class": "kit",
-      "sha256": "9784ffa5ef12d5ee249a117549119c58dd30dab4b0c1540b6a90f21a3c6997b8"
+      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
     },
     ".hermes/skills/openspec-cycle/references/report.template.md": {
       "class": "kit",
@@ -74,7 +74,7 @@
     },
     ".opencode/skills/openspec-cycle/SKILL.md": {
       "class": "kit",
-      "sha256": "9784ffa5ef12d5ee249a117549119c58dd30dab4b0c1540b6a90f21a3c6997b8"
+      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
     },
     ".opencode/skills/openspec-cycle/references/report.template.md": {
       "class": "kit",
@@ -97,16 +97,16 @@
       "sha256": "47e2594eb4ee5a1ef26b9b6aacb2bec51dac8d9650a6d3e8fdce0038bb773143"
     },
     "README.md": {
-      "class": "dist",
-      "sha256": "4e1f0b3274d460c1cad514c80ea0bbcc433cc9597bb60985a2d1d7db40f6cfa8"
+      "class": "seed",
+      "sha256": "27967b4c22429148ebdb258e1164a392fde81efd683c3a64336e040903515be6"
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "6d51969a789dc8c705521d65ea8da5fdfba8b75c2cb6ce485d9929dae4e531c3"
+      "sha256": "b75327bf0ff703bab875b887c27443ae08862b7ebf76a46890ea8ead9562aa1c"
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "d08997bd1f5f85b3f662ad996e6cf5d8009afe7d8b43220175671ba01c35a9e1"
+      "sha256": "11ece8abc6a1abcc0343c4bb7478d32634c3e40fedebb0780c0290902aa11431"
     },
     "bin/completed_since.sh": {
       "class": "kit",
@@ -126,11 +126,11 @@
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "83bcfe2b7eb08587f389e47b8d69fbb00fdf8faa07e83f13e6c669b8a564dd8f"
+      "sha256": "d0363563cd4c4719f4000b5714bb621e20a8206652a795f797508265861c62a7"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "3a7a3232b5fd003df5f511f091f358f9c519ca16b03866372a5b6226a05c3d4a"
+      "sha256": "f8d2bef730f8159923c0f206219288065500977b0243784b5c850b185f01c064"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
@@ -162,11 +162,15 @@
     },
     "config/repo.template.yaml": {
       "class": "kit",
-      "sha256": "05b581e947e51895db57f8e651889ee867ebc41bcd0dedddbc4b6543d3e2d84c"
+      "sha256": "cccd59d1c2100e86d8e7feb97eb05f07cdf60859c6fec893875371ce5c251476"
+    },
+    "docs/README.md": {
+      "class": "seed",
+      "sha256": "d0688a970f3b7244ce92426996e4aee181eb53c581b04a5e8c4c877767f9cc05"
     },
     "install.sh": {
       "class": "dist",
-      "sha256": "44623eebc733055c759fd638a9789928dd53efff528887a12c655e687e869256"
+      "sha256": "8a7f4d6c44c4328af508eb54a8b2b2b83c6578bae59a57dbb1d3af60718ac06a"
     },
     "templates/authoring_rules.md": {
       "class": "kit",
@@ -190,7 +194,7 @@
     },
     "templates/jev/fixtures/README.md": {
       "class": "kit",
-      "sha256": "54473fdf04c2261acb78d8e82cf287c9153562d67732654dc6232687e0fbfb37"
+      "sha256": "38def538c3355b1528ed6d90d3aa8b3223b3c0f0c4801f9c6308f754ef9eca63"
     },
     "templates/jev/fixtures/canary.failing.log": {
       "class": "kit",

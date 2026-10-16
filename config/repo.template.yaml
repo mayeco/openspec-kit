@@ -15,4 +15,4 @@ gates:
   typecheck: "{{TYPECHECK_COMMAND}}"     # e.g. "pnpm tsc --noEmit", "mypy .", "cargo check"
   test: "{{TEST_COMMAND}}"               # e.g. "pnpm test", "pytest", "go test ./..."
   build: "{{BUILD_COMMAND}}"             # e.g. "pnpm build", "cargo build"
-  secrets: "gitleaks detect --no-banner --redact --source ."   # recommended extra gate (§12)
+  secrets: "gitleaks detect --no-banner --redact --source ."   # recommended extra gate: committed secrets

@@ -76,7 +76,7 @@ case "$ENGINE" in
     bounded codex exec --full-auto "$PROMPT"
     ;;
   stub)
-    # Deterministic fake agent for orchestrator tests (see section 15).
+    # Deterministic fake agent for the orchestrator's own tests.
     bounded bash "${AGENT_STUB:?AGENT_STUB must point to a stub script}" "$PROMPT_FILE"
     ;;
   *)
