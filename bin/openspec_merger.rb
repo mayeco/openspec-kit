@@ -19,6 +19,10 @@ class OpenSpecMerger
   O = OpenSpecOrchestrator
   INTEGRATION_WT = File.join(O::WORKTREE_BASE, '_integration')
   STATE_FILE = File.join(O::LOG_DIR, 'merger_state.json')
+  # Written by bin/run_cycle.sh once its dispatcher has finished, holding the
+  # PID of the merger it started: that merger drains the queue and exits
+  # between changes, never mid-integration. Any other merger ignores it.
+  STOP_FILE = File.join(O::LOG_DIR, 'merger.stop')
   MAX_ATTEMPTS = 3
   GATE_TIMEOUT = Integer(ENV.fetch('OPENSPEC_GATE_TIMEOUT', '2700'))
   # Child-repo paths a worker must not change on its own: they define the gates
@@ -37,11 +41,18 @@ class OpenSpecMerger
       process_queue unless O.paused?
       break unless watch
 
+      if stop_requested?
+        process_queue unless O.paused? # manifests written while the last pass ran
+        FileUtils.rm_f(STOP_FILE)
+        break
+      end
       sleep interval
     end
   end
 
   private
+
+  def stop_requested? = File.exist?(STOP_FILE) && File.read(STOP_FILE).to_i == Process.pid
 
   def acquire_singleton!
     @singleton = File.open(File.join(O::LOCK_DIR, 'merger.lock'), File::RDWR | File::CREAT, 0o644)

@@ -16,6 +16,12 @@ else
   echo "CYCLE LOCK: none"
 fi
 
+if [ -f "$LOG/cycle/state.json" ]; then
+  ruby -rjson -e 'c = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")).fetch("last_cycle", {})
+    puts "LAST CYCLE: #{c["outcome"] || "none"} (finished #{c["finished_at"] || "-"}, report #{c["report_path"] || "-"})"' \
+    "$LOG/cycle/state.json" 2>/dev/null || echo "LAST CYCLE: log/cycle/state.json is unreadable"
+fi
+
 echo "== Processes"
 for name in dispatcher merger; do
   lock="$LOG/locks/$name.lock"

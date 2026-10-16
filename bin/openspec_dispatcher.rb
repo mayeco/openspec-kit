@@ -621,6 +621,12 @@ class OpenSpecDispatcher
     raise O::Blocked.new('spec_ambiguity', File.read(flag)) if File.exist?(flag)
   end
 
+  # The framework's authoring rules travel with the kit (templates/authoring_rules.md),
+  # so openspec/config.yaml stays the project's own, as `openspec init` created it.
+  def authoring_rules
+    @authoring_rules ||= read_or_empty(File.join(O::ROOT, 'templates', 'authoring_rules.md'))
+  end
+
   # J4: agents may ask Jev their own yes/no questions while they work.
   def jev_hint
     # The kill switch is checked first so JEV_DISABLED=1 never runs the jev CLI.
@@ -642,6 +648,8 @@ class OpenSpecDispatcher
       You are the PLANNING agent for OpenSpec change "#{change}" in this git worktree.
       Goal: #{item['description'] || item['why'] || change}
 
+      Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.
+
       Follow the openspec-propose workflow:
       1. Run `openspec status --change #{change} --json`, then for each artifact in dependency order run
          `openspec instructions <artifact-id> --change #{change} --json` and write that artifact.
@@ -653,6 +661,7 @@ class OpenSpecDispatcher
       If the requirements contradict each other in a way that affects data integrity or security, write the
       question to openspec/changes/#{change}/.needs-human and stop: a human will answer it.
       #{jev_hint}
+      #{authoring_rules}
       Hard rules: never edit openspec/specs/ or anything outside openspec/changes/#{change}/;
       never commit, push, reset or switch branches.
       #{feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''}
@@ -664,17 +673,20 @@ class OpenSpecDispatcher
     <<~PROMPT
       You are the IMPLEMENTATION agent for OpenSpec change "#{change}" in this git worktree.
 
+      Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.
+
       Follow the openspec-apply-change workflow: run `openspec instructions apply --change #{change} --json`
       and implement the pending tasks in order.
       - Application code lives in the child repositories under repos/, each already on branch #{branch}.
       - Pair every behavior change with automated tests. Mark a task `- [x]` only after its verification passes.
       - Run `bash bin/run_gates.sh` before you finish and fix every failure.
       - Write non-obvious lessons (pitfalls, required flags, environment quirks) to
-        openspec/changes/#{change}/handoff.md. Do not edit MEMORY.md or memory/.
+        openspec/changes/#{change}/handoff.md. Do not edit MEMORY.md: the scheduled cycle curates it from handoff.md.
 
       If you hit a contradiction or a decision that needs a human (data migration, security trade-off),
       write the question to openspec/changes/#{change}/.needs-human and stop.
       #{jev_hint}
+      #{authoring_rules}
       Hard rules: never edit openspec/specs/; never push, reset, rebase or switch branches;
       never edit repos/*/repo.config.yaml or CI configuration; only modify repos/ and openspec/changes/#{change}/.
       #{feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''}

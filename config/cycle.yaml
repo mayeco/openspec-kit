@@ -1,0 +1,27 @@
+# ==============================================================================
+# config/cycle.yaml - Settings of the scheduled cycle
+# ==============================================================================
+# Seed: created once by install.sh, then owned by this application. Humans edit
+# it; the cycle only reads it. The cycle's state and reports are runtime files
+# under log/cycle/ (git-ignored); durable lessons go to MEMORY.md.
+
+# Minutes the cycle agent may spend verifying delivered work and exploring.
+qa_time_budget_minutes: 45
+
+# Consecutive cycles whose dispatch ended with every change blocked before the
+# cycle stops queuing new work and reports it as needing a human.
+max_consecutive_failures: 2
+
+exploration:
+  minutes: 15                         # at least this much of the budget goes to exploring
+  max_new_backlog_items_per_cycle: 3  # concrete findings queued per cycle; the rest stay in the report
+  areas:                              # visited in rotation, one per cycle
+    - authentication-and-session-security
+    - api-rate-limiting-and-payload-validation
+    - database-indexing-and-query-performance
+    - ui-theme-and-responsive-layout-consistency
+
+qa:
+  # Application skills the cycle uses to verify and explore, for example
+  # [browser-qa, live-qa-sweep]. Empty: the cycle relies on gates and code reading.
+  skills: []

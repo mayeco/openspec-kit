@@ -15,9 +15,17 @@ git clone --branch v<version> <this-repository> openspec-kit
 ./openspec-kit/install.sh init ../my-app
 ```
 
-`init` copies the kit (`bin/`, `templates/`, `ops/`, `config/repo.template.yaml`) and creates the seed files your application then owns: `openspec/config.yaml`, `config/jev_policy.yaml`, `MEMORY.md`, `memory/cycle_memory.json` and `config/agent_backlog.json`. It also adds `.worktrees/` and `log/` to `.gitignore`, runs `openspec init`, and records the release in `.openspec-kit.lock`.
+`init` copies the kit and creates the seed files your application then owns:
+- **Kit** (replaced on upgrade): `bin/`, `templates/`, `config/repo.template.yaml`, and the skills `openspec-cycle` and `openspec-qa` in `.claude/skills/`, `.hermes/skills/`, `.agents/skills/` and `.opencode/skills/`.
+- **Seeds** (yours from then on): `MEMORY.md`, `config/cycle.yaml`, `config/jev_policy.yaml` and `config/agent_backlog.json`.
 
-Then fill the `{{...}}` placeholders in `openspec/config.yaml`, add your child repositories under `repos/` (each with a `repo.config.yaml` based on `config/repo.template.yaml`), and commit.
+It also adds `.worktrees/` and `log/` to `.gitignore` and runs `openspec init`, which creates `openspec/config.yaml` for your project. The framework's authoring rules are not in that file: they travel with the kit in `templates/authoring_rules.md`, and the dispatcher adds them to every agent prompt. Finally, `init` records the release in `.openspec-kit.lock`.
+
+Then describe your project in `openspec/config.yaml`, add your child repositories under `repos/` (each with a `repo.config.yaml` based on `config/repo.template.yaml`), and commit.
+
+## Schedule the cycle
+
+Create a task in the Claude app (or the Hermes app) that runs every hour in the application root, with `.claude/skills/openspec-cycle/references/routine-prompt.md` as its prompt. The task only runs `bash bin/run_cycle.sh --detach` and ends. The cycle then works on its own: it merges, verifies, explores, records `MEMORY.md` and the backlog, and dispatches. It keeps its state and reports in `log/cycle/`. The `openspec-cycle` skill explains how to operate it.
 
 ## Upgrade
 

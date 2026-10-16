@@ -134,7 +134,8 @@ module OpenSpecKit
     seeded = files(manifest, 'seed').keys.reject { |rel| File.exist?(File.join(target, rel)) }
     seeded.each { |rel| copy(source, target, rel) }
     append_gitignore(target)
-    # The seeded openspec/config.yaml is written first: `openspec init` keeps an existing one.
+    # `openspec init` creates openspec/config.yaml: the project owns it. The framework's
+    # authoring rules travel with the kit (templates/authoring_rules.md).
     unless Dir.exist?(File.join(target, 'openspec', 'specs'))
       out, status = Open3.capture2e('openspec', 'init', '--tools', tools, '--no-animation', '.', chdir: target)
       raise Error, "openspec init failed: #{out.strip}" unless status.success?
@@ -142,7 +143,8 @@ module OpenSpecKit
     write_lock(target, manifest)
     puts "kit: installed v#{manifest['version']} into #{target} " \
          "(#{files(manifest, 'kit').size} kit files, #{seeded.size} seeds created)"
-    puts "next: instantiate the {{...}} placeholders in openspec/config.yaml, add repos/, then commit"
+    puts 'next: describe the project in openspec/config.yaml, add child repos under repos/, commit, then ' \
+         'schedule the cycle (.claude/skills/openspec-cycle/references/routine-prompt.md)'
   end
 
   def upgrade(source, target, force:)

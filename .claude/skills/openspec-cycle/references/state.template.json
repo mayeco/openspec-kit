@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "last_cycle": {
+    "started_at": null,
+    "finished_at": null,
+    "umbrella_sha": null,
+    "outcome": null,
+    "report_path": null
+  },
+  "consecutive_failures": 0,
+  "test_baseline": {
+    "measured_at": null,
+    "passing": 0,
+    "failing": 0,
+    "known_failures": []
+  },
+  "exploration_state": {
+    "next_area": 0,
+    "history": []
+  },
+  "verified": {},
+  "needs_triage": [],
+  "notes_for_next_cycle": [],
+  "journal": []
+}

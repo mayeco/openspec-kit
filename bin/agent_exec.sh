@@ -26,8 +26,9 @@ fi
 # macOS ships without GNU timeout; Homebrew coreutils installs it as gtimeout.
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # GNU timeout moves itself into a new process group, so INT/TERM sent to our
-# group (dispatcher shutdown, launchd stop) would never reach the agent and
-# would orphan it. Run timeout in the background and forward those signals.
+# group (dispatcher shutdown, a scheduler stopping the cycle) would never reach
+# the agent and would orphan it. Run timeout in the background and forward
+# those signals.
 TIMEOUT_PID=""
 forward_signal() { [ -n "$TIMEOUT_PID" ] && kill -TERM "$TIMEOUT_PID" 2>/dev/null; }
 bounded() {
