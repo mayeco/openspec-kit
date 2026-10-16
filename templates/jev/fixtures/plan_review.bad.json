@@ -1,0 +1,13 @@
+{
+  "change": "improve-stuff",
+  "goal": "Make everything better and refactor code",
+  "proposal": "## Why\nImprove quality and clean up tech debt.\n\n## What Changes\nRefactor various files across the system and add some features.\n\n## Capabilities\n### Modified Capabilities\n- misc: general improvements\n\n## Impact\nTouches various parts.",
+  "design": "## Goals\nMake code robust and user-friendly.\n\n## Decisions\nDo things nicely.",
+  "tasks": "## 1. Work\n- [ ] 1.1 Refactor code\n- [ ] 1.2 Fix bugs",
+  "delta_specs": {
+    "misc": "## ADDED Requirements\n\n### Requirement: General Improvements\nThe system SHALL behave correctly and run fast.\n\n#### Scenario: Works nicely\n- **WHEN** things happen\n- **THEN** the system behaves robustly"
+  },
+  "canonical_specs": {
+    "misc": "# Misc Specification\n\n## Purpose\nMiscellaneous behavior."
+  }
+}

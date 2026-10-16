@@ -1,0 +1,160 @@
+{
+  "name": "openspec-kit",
+  "version": "2.2.0",
+  "source_commit": "9b14c21aa86d5e3014df7a2ca3a7ebb748c9b799",
+  "source_dirty": false,
+  "built_at": "2026-10-16T11:38:41Z",
+  "toolchain": {
+    "openspec": "1.14.1",
+    "git": "2.56.0",
+    "ruby": "4.0.7",
+    "jev": "0.2.0",
+    "jev_model": "jev-1.13.0"
+  },
+  "files": {
+    "MEMORY.md": {
+      "class": "seed",
+      "sha256": "b2e87d75f4f5821569a636c9add7a9d0540f63448b83f0b6ab129cff55e2cda2"
+    },
+    "README.md": {
+      "class": "dist",
+      "sha256": "d6249aa2958f2a42228b23be855bd406c0e635ae67e90ab1e6b85da57107d117"
+    },
+    "bin/agent_exec.sh": {
+      "class": "kit",
+      "sha256": "fcbe9786dad2aa12b51891e075358925d58aaace4fc616848cd9c8332befc548"
+    },
+    "bin/check_ai_engines.sh": {
+      "class": "kit",
+      "sha256": "d08997bd1f5f85b3f662ad996e6cf5d8009afe7d8b43220175671ba01c35a9e1"
+    },
+    "bin/completed_since.sh": {
+      "class": "kit",
+      "sha256": "cd06a3c58c0bfc3ae287a6038983e43804f56c6d187b1ecbb86e8082b83620de"
+    },
+    "bin/cycle_status.sh": {
+      "class": "kit",
+      "sha256": "ab9631b88b18b34bdb01295ab9bfe0e2f003b7e13250ffc967767d6a3de53137"
+    },
+    "bin/jev_contract.sh": {
+      "class": "kit",
+      "sha256": "d502f5196143973bcf775d18debd8bfe83193cecba6096ebafa821f05fa45877"
+    },
+    "bin/lib/openspec_orchestrator.rb": {
+      "class": "kit",
+      "sha256": "63e2e8e4e98570f10a9f506e6d26cccf8605e30275ea3994c7162c46b7dd2be3"
+    },
+    "bin/openspec_dispatcher.rb": {
+      "class": "kit",
+      "sha256": "17e16234e00eb0b1dc26c865864372394e896a085e65e9062c032be5d1bca8be"
+    },
+    "bin/openspec_kit.rb": {
+      "class": "kit",
+      "sha256": "82c35271c09f0c01cfa9891e778e45f6434cc28f267a1eff6ffb224d40e5a288"
+    },
+    "bin/openspec_merger.rb": {
+      "class": "kit",
+      "sha256": "2bd4d7b2597255e7d8564474b5ef0d46186aec715244408eacd5353184f2e3a0"
+    },
+    "bin/run_cycle.sh": {
+      "class": "kit",
+      "sha256": "cc28b1d29875ab09e74bb60be14917b81730a8c6e831482c615e57e0881f06f0"
+    },
+    "bin/run_gates.sh": {
+      "class": "kit",
+      "sha256": "a9ff30372d57b8ffe33e777aedfc92a3801cbfb6e92bccbe4d96b23c060d4d2f"
+    },
+    "bin/sync_repos.sh": {
+      "class": "kit",
+      "sha256": "5e9ec05d9bb4a33bf6c597680fcab4a33582b76b6d5580a4ac5cfcd60a4cdbbe"
+    },
+    "config/agent_backlog.json": {
+      "class": "seed",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "config/jev_policy.yaml": {
+      "class": "seed",
+      "sha256": "f0e78f470d736e9ad32d3d36b3c5f1cbaac02a3b88b76033bde9871b1e7044eb"
+    },
+    "config/repo.template.yaml": {
+      "class": "kit",
+      "sha256": "05b581e947e51895db57f8e651889ee867ebc41bcd0dedddbc4b6543d3e2d84c"
+    },
+    "install.sh": {
+      "class": "dist",
+      "sha256": "44623eebc733055c759fd638a9789928dd53efff528887a12c655e687e869256"
+    },
+    "memory/cycle_memory.json": {
+      "class": "seed",
+      "sha256": "d88cca49844e9a9ef72500924c3286eb4210fd502a524d27bfd8c0edf58bfebd"
+    },
+    "openspec/config.yaml": {
+      "class": "seed",
+      "sha256": "13daadaee72961c806cc7c0631bf98dc86a80c895a7eed6d32c518f52547d850"
+    },
+    "ops/dev.openspec.cycle.plist": {
+      "class": "kit",
+      "sha256": "8ce373638e1e94d9d2de43cbb363d4388628268bd679ce04a819de5da405fe7c"
+    },
+    "ops/dev.openspec.merger.plist": {
+      "class": "kit",
+      "sha256": "6d5242fc7a79853a07ba149ca2cf08b426d9054d168b62e1babf951ca3e69983"
+    },
+    "templates/cron_routine_prompt.md": {
+      "class": "kit",
+      "sha256": "ea9625289fe7f635e89db030b7b3e5f81a91f8c887daeb49b029f5bf2976ed83"
+    },
+    "templates/jev/canary.yaml": {
+      "class": "kit",
+      "sha256": "f4e28473922ec2cca990646a07309929472467c3466ee45b50f1d126c24b792e"
+    },
+    "templates/jev/change_risk.yaml": {
+      "class": "kit",
+      "sha256": "c30e30952a4f13c1b966dd9528fa3cad6c2770921e6fdc8a0365bffd60d5baa4"
+    },
+    "templates/jev/failure_triage.yaml": {
+      "class": "kit",
+      "sha256": "422fd41537575fe5fbbe405f4d243bf827672a5b9576a7d1729e7a78563206e8"
+    },
+    "templates/jev/fixtures/README.md": {
+      "class": "kit",
+      "sha256": "54473fdf04c2261acb78d8e82cf287c9153562d67732654dc6232687e0fbfb37"
+    },
+    "templates/jev/fixtures/canary.failing.log": {
+      "class": "kit",
+      "sha256": "b84c000142c28c1990a430f9adabb0e339fd074e86339b3b41e0e52f4d29501e"
+    },
+    "templates/jev/fixtures/change_risk.high.json": {
+      "class": "kit",
+      "sha256": "f178f2a793bd2a2068e415c2504dc51e53474018d59117a3b25ad1d2a361eeee"
+    },
+    "templates/jev/fixtures/change_risk.low.json": {
+      "class": "kit",
+      "sha256": "9c6565dfea2d5f57249c18199be805955b0c29fbd92d156d6e51c310f330cf78"
+    },
+    "templates/jev/fixtures/failure_triage.defect.json": {
+      "class": "kit",
+      "sha256": "2e0cde267733da20f263c9fa56d45de2844d755296224be77b6468bb01f2ec14"
+    },
+    "templates/jev/fixtures/failure_triage.flaky.json": {
+      "class": "kit",
+      "sha256": "45d1e8b6ee90f8abedd2b68b38739af1e7d7edc5207992c48e64b06d59fa4492"
+    },
+    "templates/jev/fixtures/plan_review.bad.json": {
+      "class": "kit",
+      "sha256": "e5f5a2fa06be660c0172cc43d4c390662fac370cb1313c742c3e27ea2b3c84af"
+    },
+    "templates/jev/fixtures/plan_review.good.json": {
+      "class": "kit",
+      "sha256": "96cf49937c492251ac5e7f316e23f527be5a48a70d96cf48309ed3b3c9558ae3"
+    },
+    "templates/jev/plan_review.yaml": {
+      "class": "kit",
+      "sha256": "a36c552551df57dae51a96c4cf48f32acd083f195e1d6df36e1662893bc715b4"
+    },
+    "templates/jev/task_priority.yaml": {
+      "class": "kit",
+      "sha256": "6d0839da60e3e9c792dff6fbaceaa9178752544cd5c0f08ba0842244422922af"
+    }
+  }
+}

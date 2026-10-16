@@ -1,0 +1,18 @@
+# repos/<repo-name>/repo.config.yaml
+name: "{{REPO_NAME}}"            # e.g. "backend", "frontend", "infra"
+stack: "{{TECH_STACK}}"          # e.g. "python-fastapi", "nextjs-typescript", "go", "rails"
+base_branch: "{{BASE_BRANCH}}"   # the branch the merger pushes to, e.g. "main"
+
+service:
+  dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev", "uvicorn app.main:app --reload"
+  port: "{{DEV_PORT}}"                   # quoted: an unquoted {{...}} is invalid YAML
+  health_endpoint: "{{HEALTH_ENDPOINT}}" # e.g. "http://localhost:3000/up"
+
+# Run in this order when this repo has changes: lint, typecheck, test, build, then any extra keys.
+# Empty values and un-instantiated {{...}} placeholders are skipped with a warning.
+gates:
+  lint: "{{LINT_COMMAND}}"               # e.g. "pnpm lint", "ruff check .", "golangci-lint run"
+  typecheck: "{{TYPECHECK_COMMAND}}"     # e.g. "pnpm tsc --noEmit", "mypy .", "cargo check"
+  test: "{{TEST_COMMAND}}"               # e.g. "pnpm test", "pytest", "go test ./..."
+  build: "{{BUILD_COMMAND}}"             # e.g. "pnpm build", "cargo build"
+  secrets: "gitleaks detect --no-banner --redact --source ."   # recommended extra gate (§12)

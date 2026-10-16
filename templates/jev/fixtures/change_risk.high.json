@@ -1,0 +1,18 @@
+{
+  "change": "rotate-password-hashing",
+  "goal": "Migrate password hashing from bcrypt to argon2 and drop legacy columns",
+  "proposal": "## Why\nSecurity upgrade to Argon2id password hashing.\n\n## What Changes\nAlter password hashing algorithm and execute database migration dropping plaintext password backfill column.",
+  "capabilities": [
+    "user-authentication"
+  ],
+  "repos": {
+    "repos/backend": {
+      "files": [
+        "db/migrate/20261015000001_alter_passwords.rb",
+        "app/models/user.rb"
+      ],
+      "diffstat": " db/migrate/20261015000001_alter_passwords.rb | 15 +++++++++++++++\n app/models/user.rb                           |  8 +++-----\n 2 files changed, 16 insertions(+), 7 deletions(-)\n",
+      "diff": "--- a/app/models/user.rb\n+++ b/app/models/user.rb\n@@ -10,3 +10,4 @@\n-  has_secure_password\n+  # Argon2id password hash implementation\n+  # Replaces bcrypt; drops legacy password column\n"
+    }
+  }
+}

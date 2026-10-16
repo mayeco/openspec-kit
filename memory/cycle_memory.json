@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "config": {
+    "qa_time_budget_minutes": 45,
+    "max_consecutive_failures": 2,
+    "exploration": {
+      "minutes": 15,
+      "max_new_proposals_per_cycle": 3,
+      "focus_areas": [
+        "authentication-and-session-security",
+        "api-rate-limiting-and-payload-validation",
+        "database-indexing-and-query-performance",
+        "ui-theme-and-responsive-layout-consistency"
+      ]
+    }
+  },
+  "last_cycle": {
+    "started_at": null,
+    "finished_at": null,
+    "umbrella_sha": null,
+    "outcome": null,
+    "report_path": null
+  },
+  "consecutive_failures": 0,
+  "test_baseline": {
+    "measured_at": null,
+    "passing_tests": 0,
+    "failing_tests": 0,
+    "known_failures": []
+  },
+  "journal": []
+}

@@ -1,0 +1,18 @@
+{
+  "change": "update-api-docs",
+  "goal": "Update API documentation and OpenAPI spec comments",
+  "proposal": "## Why\nDocument new response headers.\n\n## What Changes\nDocumentation updates only.",
+  "capabilities": [
+    "api-docs"
+  ],
+  "repos": {
+    "repos/backend": {
+      "files": [
+        "docs/api.md",
+        "README.md"
+      ],
+      "diffstat": " docs/api.md | 12 +++++++++++-\n README.md   |  2 +-\n 2 files changed, 12 insertions(+), 2 deletions(-)\n",
+      "diff": "--- a/docs/api.md\n+++ b/docs/api.md\n@@ -1,3 +1,13 @@\n+# API Documentation\n+Documents the v1 endpoints.\n"
+    }
+  }
+}

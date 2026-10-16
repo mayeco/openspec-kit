@@ -1,0 +1,7 @@
+{
+  "change": "add-oauth",
+  "gate_output": "---- [gate] backend:test: pytest -q\nFAILED tests/test_oauth.py::test_invalid_token - AssertionError: assert 200 == 401\nExpected response status 401 Unauthorized but received 200 OK\n---- [FAIL] backend:test (exit 1)",
+  "delta_specs": {
+    "user-authentication": "## ADDED Requirements\n\n### Requirement: OAuth\nThe system SHALL reject invalid tokens."
+  }
+}

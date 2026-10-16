@@ -1,0 +1,7 @@
+{
+  "change": "add-billing-webhook",
+  "gate_output": "---- [gate] backend:test: pytest -q\npsql: error: connect ECONNRESET 127.0.0.1:5432\nConnection refused while contacting database server\n---- [FAIL] backend:test (exit 1)",
+  "delta_specs": {
+    "billing": "## ADDED Requirements\n\n### Requirement: Webhook\nThe system SHALL verify signatures."
+  }
+}

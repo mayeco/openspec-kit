@@ -1,0 +1,13 @@
+{
+  "change": "add-oauth-providers",
+  "goal": "Add Google and GitHub OAuth sign-in to reduce login friction",
+  "proposal": "## Why\nUsers experience drop-off during password registration. OAuth sign-in streamlines onboarding.\n\n## What Changes\nImplement Google and GitHub OAuth 2.0 callback handlers and link authenticated profiles to user records.\n\n## Capabilities\n### New Capabilities\n### Modified Capabilities\n- user-authentication: adds OAuth identity provider support\n\n## Impact\nModifies backend auth controller and session token issuance.",
+  "design": "## Goals\nSupport OAuth 2.0 Google and GitHub sign-in.\n\n## Non-Goals\nSAML or enterprise SSO.\n\n## Architecture\nUses standard OAuth authorization code flow. Callback verifies state nonce, fetches user profile, and creates session.\n\n## Rollback\nDisable OAuth feature flag in configuration.",
+  "tasks": "## 1. Setup\n- [ ] 1.1 Configure OAuth client credentials (verify: bundle exec rspec spec/services/oauth_config_spec.rb)\n\n## 2. Core Implementation\n- [ ] 2.1 Implement OAuth callback handler (verify: bundle exec rspec spec/requests/oauth_callback_spec.rb)\n- [ ] 2.2 Add unit and request tests for OAuth authentication (verify: bundle exec rspec spec/requests/oauth_spec.rb)",
+  "delta_specs": {
+    "user-authentication": "## Purpose\nGoverns user credential verification and OAuth session issuance.\n\n## ADDED Requirements\n\n### Requirement: OAuth Provider Sign-In\nThe system SHALL allow sign-in through configured OAuth providers (Google, GitHub).\n\n#### Scenario: First sign-in creates an account\n- **WHEN** a user completes the OAuth flow with an unknown provider identity\n- **THEN** the system creates an account linked to that identity\n- **AND** returns HTTP 200 OK with session metadata"
+  },
+  "canonical_specs": {
+    "user-authentication": "# User Authentication Specification\n\n## Purpose\nGoverns user credential verification and session lifecycle across all applications.\n\n## Requirements\n\n### Requirement: User Credential Validation\nThe system SHALL verify user email and password credentials.\n\n#### Scenario: Valid login\n- **WHEN** valid credentials are submitted\n- **THEN** a session token is issued"
+  }
+}

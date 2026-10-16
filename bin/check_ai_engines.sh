@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# bin/check_ai_engines.sh - Autonomous AI engine and judge preflight
+# ==============================================================================
+# Verifies the deterministic toolchain (git, openspec, ruby), that each installed
+# agent engine authenticates and answers a live ping, that the installed kit
+# matches its .openspec-kit.lock, and that the Jev judge passes its offline
+# contract and a live known-answer canary.
+# Exit 0 when the toolchain is complete, the kit has not drifted, at least one
+# agent engine works, the Jev question files are valid, and (only with
+# JEV_REQUIRED=1) the judge is OK.
+set -o pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT" || exit 1
+export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 90 "$@"; else "$@"; fi; }
+AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized"
+
+echo "== Toolchain ($(date -u +%Y-%m-%dT%H:%M:%SZ), $(uname -sm))"
+MISSING=0
+for tool in git openspec ruby; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    echo "  $tool: $("$tool" --version 2>/dev/null | head -1)"
+  else
+    echo "  $tool: NOT FOUND"; MISSING=1
+  fi
+done
+
+echo "== Kit"
+# Kit files are replaced by upgrades and never edited in place (docs/DEV_FRK.md section 17).
+KIT_OK=1
+ruby bin/openspec_kit.rb verify . 2>&1 | sed 's/^/  /'
+[ "${PIPESTATUS[0]}" -eq 0 ] || KIT_OK=0
+
+echo "== Agent engines"
+WORKING=""
+probe() { # <name> <command...>
+  local name="$1"; shift
+  command -v "$name" >/dev/null 2>&1 || { echo "  $name: not installed"; return; }
+  local out
+  out="$(bounded "$@" 2>&1)"
+  if printf '%s' "$out" | grep -qiE "$AUTH_ERRORS"; then
+    echo "  $name: FAILED (authentication)"
+  elif [ -n "$out" ]; then
+    echo "  $name: OK"; WORKING="$WORKING $name"
+  else
+    echo "  $name: WARN (empty response or timeout)"
+  fi
+}
+probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.05 --no-session-persistence
+probe hermes   hermes -z "Reply with the single word: pong"
+probe opencode opencode run "Reply with the single word: pong"
+
+# Jev is a judge, not an agent engine: it answers typed questions with
+# probabilities and never writes code, so it does not count toward WORKING.
+echo "== Judge (jev)"
+JUDGE=off   # ok | off | missing | invalid | auth | drift | unavailable
+if [ "${JEV_DISABLED:-0}" = 1 ]; then
+  echo "  jev: disabled (JEV_DISABLED=1)"
+elif ! command -v jev >/dev/null 2>&1; then
+  echo "  jev: not installed (brew install shaharia-lab/tap/jev)"; JUDGE=missing
+elif [ ! -f templates/jev/canary.yaml ]; then
+  echo "  jev: templates/jev/ not installed; skipped"
+else
+  JUDGE=ok
+  JEV_MODEL="${JEV_MODEL:-$(ruby -ryaml -e 'puts((YAML.safe_load_file(ARGV[0]) || {})["model"] || "jev-latest")' config/jev_policy.yaml 2>/dev/null || echo jev-latest)}"
+  echo "  jev: CLI $(jev version -o json 2>/dev/null | ruby -rjson -e 'puts JSON.parse(STDIN.read)["version"]' 2>/dev/null), model ${JEV_MODEL}"
+
+  # 1. Offline and free: every question file must pass strict validation.
+  for f in templates/jev/*.yaml; do
+    if ! jev validate -f "$f" --strict -o json --quiet >/dev/null 2>&1; then
+      echo "  jev: INVALID question file $f (see: jev validate -f $f --strict)"; JUDGE=invalid
+    fi
+  done
+
+  # 2. Live canary: an obvious yes and an obvious no in one call (about $0.00002).
+  if [ "$JUDGE" = ok ]; then
+    OUT="$(bounded jev eval -f templates/jev/canary.yaml --model "$JEV_MODEL" -o json --quiet --no-input \
+             --assert "all_gates_passed >= 0.8" --assert "reports_failure <= 0.2" 2>&1)"
+    RC=$?
+    SUMMARY="$(printf '%s' "$OUT" | ruby -rjson -e '
+      begin
+        d = JSON.parse(STDIN.read); a = d.fetch("answers", {})
+        puts "yes=#{a.dig("all_gates_passed", "noul")} no=#{a.dig("reports_failure", "noul")} answered_by=#{d["model"]} #{d["latency_ms"]}ms"
+      rescue StandardError
+        puts "unparseable response"
+      end' 2>/dev/null)"
+    case "$RC" in
+      0)        echo "  jev: OK (canary $SUMMARY)" ;;
+      10)       echo "  jev: FAILED (canary answered wrong: $SUMMARY; enforce gates must not be trusted)"; JUDGE=drift ;;
+      3)        echo "  jev: FAILED (authentication: run 'jev auth login' or export TYPESAFE_API_KEY)"; JUDGE=auth ;;
+      5|6|124)  echo "  jev: UNAVAILABLE (rate limit, network or timeout; exit $RC)"; JUDGE=unavailable ;;
+      *)        echo "  jev: ERROR (exit $RC: $(printf '%s' "$OUT" | tail -c 240))"; JUDGE=unavailable ;;
+    esac
+  fi
+fi
+
+echo "========================================================================"
+if [ "$MISSING" -eq 1 ]; then echo "preflight: FAIL (toolchain incomplete)"; exit 1; fi
+if [ "$KIT_OK" -eq 0 ]; then echo "preflight: FAIL (kit differs from .openspec-kit.lock: upgrade or reinstall it)"; exit 1; fi
+if [ -z "$WORKING" ]; then echo "preflight: FAIL (no working AI engine)"; exit 1; fi
+if [ "$JUDGE" = invalid ]; then echo "preflight: FAIL (invalid Jev question files: a framework bug)"; exit 1; fi
+if [ "${JEV_REQUIRED:-0}" = 1 ] && [ "$JUDGE" != ok ]; then
+  echo "preflight: FAIL (JEV_REQUIRED=1 and the judge is ${JUDGE})"; exit 1
+fi
+echo "preflight: OK (engines:${WORKING}; default: ${AGENT_ENGINE:-first available} [plan:${AGENT_ENGINE_PLAN:-default} build:${AGENT_ENGINE_BUILD:-default} cycle:${AGENT_ENGINE_CYCLE:-default}]; judge: ${JUDGE})"

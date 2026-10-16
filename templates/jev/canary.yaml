@@ -1,0 +1,22 @@
+# Known-answer probe for bin/check_ai_engines.sh: one obvious yes, one obvious no.
+# If either answer drifts past its threshold, the judge is not trustworthy for gating.
+state: |
+  ---- [gate] backend:lint: ruff check .
+  ---- [pass] backend:lint (2s)
+  ---- [gate] backend:test: pytest -q
+  318 passed in 41.2s
+  ---- [pass] backend:test (43s)
+  gates: PASS (2 executed; repos: backend)
+questions:
+  all_gates_passed:
+    type: noul
+    instructions: Does this log report that every quality gate passed?
+    criteria:
+      "true": The log ends with an overall pass and no gate is marked FAIL.
+      "false": At least one gate failed, or the overall result is FAIL.
+  reports_failure:
+    type: noul
+    instructions: Does this log report a failing test or a failing gate?
+    criteria:
+      "true": A test or a gate is reported as failed.
+      "false": Every test and every gate is reported as passed.

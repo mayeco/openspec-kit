@@ -1,0 +1,24 @@
+# J3 - Change risk. Asked by the dispatcher after BUILD passes, before the change is queued.
+# State (JSON): change, goal, proposal, capabilities, repos{path: {files, diffstat, diff}}.
+# Blocking rules live in config/jev_policy.yaml; log/approved/<change> overrides them.
+questions:
+  risk:
+    type: choice
+    instructions: How risky is it to release this change without a human review?
+    criteria:
+      low: Additive and isolated, for example new code paths behind existing interfaces, tests, documentation, or internal refactors covered by tests.
+      medium: Changes existing behavior that users or other services rely on, but a code revert fully undoes it and it does not touch stored data or security controls.
+      high: Touches authentication, authorization, payments, personal data, cryptography, data migrations or deletions, infrastructure, or public API contracts, or a revert may not undo its effects.
+      cannot_tell: The proposal and the diff do not show enough to judge the risk.
+  security_sensitive:
+    type: noul
+    instructions: Does the change touch authentication, authorization, secrets, cryptography, or the handling of personal or payment data?
+    criteria:
+      "true": The diff or the proposal changes code or configuration in one of those areas.
+      "false": None of those areas is changed.
+  irreversible_data_change:
+    type: noul
+    instructions: Does the change alter stored data or its schema in a way that reverting the code would not undo?
+    criteria:
+      "true": The change adds or runs a migration, a backfill, a deletion or a format change of persisted data.
+      "false": No persisted data or schema is changed.

@@ -1,0 +1,34 @@
+# J1 - Plan review. Asked by the dispatcher after `openspec validate --strict` passes.
+# State (JSON): change, goal, proposal, design, tasks, delta_specs{capability: text},
+# canonical_specs{capability: text}. Thresholds live in config/jev_policy.yaml.
+questions:
+  problem_is_concrete:
+    type: noul
+    instructions: Does the proposal state a specific problem and an outcome that can be checked?
+    criteria:
+      "true": The Why names a specific problem or need, and What Changes describes a result someone could verify.
+      "false": The motivation is generic (for example "improve quality" or "refactor things"), or no verifiable outcome is stated.
+  scenarios_are_testable:
+    type: noul
+    instructions: Can every scenario in delta_specs be checked by an automated test exactly as written?
+    criteria:
+      "true": Every WHEN names a concrete trigger and every THEN names an observable result such as a status code, a stored value, an emitted event or a rendered element.
+      "false": At least one scenario depends on vague words such as fast, secure, robust, user-friendly or correctly, or has no observable result.
+  tasks_cover_scenarios:
+    type: noul
+    instructions: Do the tasks include implementation work and test work for the requirements in delta_specs?
+    criteria:
+      "true": Each requirement in delta_specs has a task that implements it and a task that tests it.
+      "false": Some requirement in delta_specs has no implementing task or no testing task.
+  consistent_with_canonical_specs:
+    type: noul
+    instructions: Is the change consistent with the current behavior described in canonical_specs?
+    criteria:
+      "true": Nothing in the proposal or delta_specs contradicts canonical_specs, except requirements the delta explicitly lists under MODIFIED, REMOVED or RENAMED.
+      "false": The proposal or an ADDED requirement contradicts a current requirement without modifying or removing it.
+  single_concern:
+    type: noul
+    instructions: Does the change pursue a single goal that can be reviewed and shipped as one unit?
+    criteria:
+      "true": Every part of the proposal serves the same goal.
+      "false": The change bundles unrelated goals that should be separate changes.

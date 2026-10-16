@@ -1,0 +1,3 @@
+---- [gate] backend:test: pytest -q
+FAILED tests/test_auth.py::test_login - AssertionError: Expected 200 OK, got 401 Unauthorized
+gates: FAIL (backend:test)

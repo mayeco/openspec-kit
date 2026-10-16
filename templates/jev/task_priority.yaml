@@ -1,0 +1,18 @@
+# J5 - Task priority and actionable impact. Asked when queuing new items into config/agent_backlog.json.
+# State (JSON): change_name, goal, description, evidence.
+questions:
+  urgency:
+    type: choice
+    instructions: What is the appropriate priority level for this proposed engineering task based on impact and urgency?
+    criteria:
+      critical: Fixes active security vulnerability, prevents irreversible data corruption, or unblocks broken build/CI.
+      high: Fixes customer-facing breakage, unblocks major planned capabilities, or addresses significant performance degradation.
+      normal: Routine feature implementation, scheduled refactoring, or incremental test coverage.
+      low: Cosmetic improvements, internal developer ergonomics, or minor documentation updates.
+      cannot_tell: The description lacks sufficient evidence or impact metrics to assess urgency.
+  actionable_impact:
+    type: noul
+    instructions: Is this task backed by concrete, verifiable evidence and ready for autonomous planning?
+    criteria:
+      "true": The proposal states an observable problem or need with concrete evidence or reproduction steps.
+      "false": The description is vague, speculative, or lacks actionable acceptance criteria.

@@ -1,0 +1,53 @@
+# ==============================================================================
+# config/jev_policy.yaml - Calibrated judgment gates (Jev)
+# ==============================================================================
+# Framework lane: humans edit this file. Jev answers typed questions with
+# probabilities, never text; this file turns those numbers into decisions.
+# Roll out every gate as `advisory`, review the recorded answers (log/events.jsonl,
+# event jev.answer), tune thresholds, then switch to `enforce`.
+
+model: jev-1.13.0          # pinned versioned id (jev-latest resolved to it on 2026-10-15); never an alias in enforce mode
+timeout: 30s               # per attempt
+max_retries: 2
+max_state_chars: 24000     # every string in a state is clipped to this many characters
+include_diffs: true        # false: change_risk sends file lists and diffstats only, never code
+abstain_band: [0.4, 0.6]   # logged as `abstained` ("cannot tell"); in enforce mode it still blocks, never passes
+on_unavailable: skip       # skip | block. block: an enforce gate quarantines the change (judge_unavailable) and writes log/PAUSE
+
+gates:
+  plan_review:             # J1: dispatcher, after openspec validate --strict passes
+    mode: advisory         # off | advisory | enforce
+    file: templates/jev/plan_review.yaml
+    assert:                # every condition must hold; enforce feeds failures back to the PLAN agent
+      - "problem_is_concrete >= 0.6"
+      - "scenarios_are_testable >= 0.6"
+      - "tasks_cover_scenarios >= 0.6"
+      - "consistent_with_canonical_specs >= 0.6"
+      - "single_concern >= 0.6"
+
+  failure_triage:          # J2: dispatcher, when gates fail during BUILD
+    mode: advisory
+    file: templates/jev/failure_triage.yaml
+    rerun_when:            # re-run the gates once, without spending an agent repair
+      question: cause
+      choice: environment_or_flaky
+      min_confidence: 0.8
+    escalate_when:         # quarantine as spec_ambiguity instead of letting the agent pick a side
+      question: cause
+      choice: requirement_ambiguity
+      min_confidence: 0.8
+
+  change_risk:             # J3: dispatcher, after BUILD passes, before queuing for merge
+    mode: advisory
+    file: templates/jev/change_risk.yaml
+    block_when:            # any rule quarantines the change as risk_review (unless log/approved/<change> exists)
+      - { question: risk, choice: high, min_confidence: 0.7 }
+      - { question: risk, choice: cannot_tell, min_confidence: 0.0 }
+      - { question: security_sensitive, min: 0.8 }
+      - { question: irreversible_data_change, min: 0.8 }
+
+  task_priority:           # J5: cycle agent or operator when proposing backlog items
+    mode: advisory         # off | advisory | enforce
+    file: templates/jev/task_priority.yaml
+    min_actionable_impact: 0.7
+    reject_choices: ["cannot_tell"]

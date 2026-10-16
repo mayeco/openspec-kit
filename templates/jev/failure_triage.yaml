@@ -1,0 +1,13 @@
+# J2 - Gate failure triage. Asked by the dispatcher when bin/run_gates.sh fails during BUILD.
+# State (JSON): change, gate_output (tail of the gate log), delta_specs{capability: text}.
+# Routing rules (rerun / escalate) live in config/jev_policy.yaml.
+questions:
+  cause:
+    type: choice
+    instructions: What is the most likely cause of the failure shown in gate_output?
+    criteria:
+      implementation_defect: The application code behaves differently from what a test, linter, type checker or build expects, for example an assertion with wrong values, an exception raised from application code, a type error or a lint error in changed code.
+      test_defect: A test is wrong or outdated, for example it calls code that no longer exists, asserts an old contract, or fails in its own setup.
+      environment_or_flaky: The failure comes from the environment rather than the code, for example connection refused or reset, DNS errors, timeouts, a port already in use, a missing tool or service, out of memory, or rate limiting.
+      requirement_ambiguity: The tests and the scenarios in delta_specs expect different behavior, so making one pass would break the other and a person must decide which is right.
+      other: The output does not show enough to tell, or the cause fits none of the options above.
