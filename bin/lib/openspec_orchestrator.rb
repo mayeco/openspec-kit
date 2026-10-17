@@ -33,6 +33,9 @@ module OpenSpecOrchestrator
   BLOCKED_DIR = File.join(LOG_DIR, 'blocked')
   APPROVED_DIR = File.join(LOG_DIR, 'approved') # operator-written: log/approved/<change> waives risk_review
   WORKER_LOG_DIR = File.join(LOG_DIR, 'workers')
+  REBUILD_DIR = File.join(LOG_DIR, 'rebuilds') # <change>.json: automatic rebuilds after a rebase conflict
+  # OPENSPEC_SLOT of the merger's integration worktree; the dispatcher's workers take 1, 2, ...
+  MERGER_SLOT = 99
   EVENTS_FILE = File.join(LOG_DIR, 'events.jsonl')
   PAUSE_FILE = File.join(LOG_DIR, 'PAUSE')
   BACKLOG_FILE = File.join(ROOT, 'config', 'agent_backlog.json')
@@ -60,8 +63,10 @@ module OpenSpecOrchestrator
   module_function
 
   def ensure_dirs!
-    [LOG_DIR, LOCK_DIR, READY_DIR, BLOCKED_DIR, APPROVED_DIR, WORKER_LOG_DIR, WORKTREE_BASE].each { |d| FileUtils.mkdir_p(d) }
+    [LOG_DIR, LOCK_DIR, READY_DIR, BLOCKED_DIR, APPROVED_DIR, WORKER_LOG_DIR, REBUILD_DIR, WORKTREE_BASE].each { |d| FileUtils.mkdir_p(d) }
   end
+
+  def rebuild_file(change) = File.join(REBUILD_DIR, "#{change}.json")
 
   RUNNING = {} # pid => true; every child runs in its own process group
 

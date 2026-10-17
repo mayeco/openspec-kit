@@ -132,7 +132,7 @@ rm -rf "$LOCK"; CYCLE_HELD=0
 if [ -f "$LOG_DIR/PAUSE" ]; then echo "cycle: paused by agent or operator"; exit 0; fi
 echo "== dispatch"
 if ! take_lock "$DISPATCH_LOCK"; then
-  echo "dispatch: already running (pid $(dispatch_owner)); what this cycle queued waits for the next dispatch"
+  echo "dispatch: already running (pid $(dispatch_owner)); it picks up what this cycle queued when a worker is free"
   echo "== done"; exit 0
 fi
 DISPATCH_HELD=1

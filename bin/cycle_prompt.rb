@@ -11,8 +11,8 @@
 #     rotation (or at random, never one of the most recent half again). With
 #     visual_qa enabled, strategies that need a browser are left to the visual
 #     QA session (bin/visual_qa.sh), which picks them the same way;
-#   - whether a dispatch is running, so the agent knows that what it queues
-#     waits for the next dispatch;
+#   - whether a dispatch is running, so the agent knows that it picks up what
+#     it queues as soon as a worker is free;
 #   - where findings go, the roadmap and how proposals get approved
 #     (config/cycle.yaml).
 #
@@ -105,8 +105,8 @@ module CyclePrompt
     max = (exploration['max_new_backlog_items_per_cycle'] || 3).to_i
     dispatch = if dispatch_pid
                  "a dispatch is running (pid #{dispatch_pid}) and builds what earlier cycles queued. Verify what " \
-                 'is already integrated, explore and queue as usual: what you queue or propose waits for the next ' \
-                 'dispatch, and this cycle does not count in `consecutive_failures`.'
+                 'is already integrated, explore and queue as usual: it reads the backlog again as it goes, so what ' \
+                 'you queue starts as soon as a worker is free. This cycle does not count in `consecutive_failures`.'
                else
                  'none is running; the script dispatches after you exit.'
                end

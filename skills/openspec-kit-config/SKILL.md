@@ -32,10 +32,11 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | How much new work per cycle? | `cycle.exploration.max_new_backlog_items_per_cycle`, `cycle.roadmap.max_new_per_cycle`, `cycle.roadmap.max_open` |
 | Who approves proposals? | `cycle.proposals.approval` (`jev`, `human`, `auto`), and with `jev`, `jev.gates.proposal_review.mode` |
 | Is there a browser session? | `cycle.visual_qa.enabled`, `.minutes`, `.max_items_per_session`; its schedule (`SCHEDULING.md`) |
-| How strict is Jev? | `jev.gates.<gate>.mode` (`off`, `advisory`, `enforce`), the gate's thresholds, `jev.on_unavailable` |
-| What runs before a change merges? | The `gates` of each `repos/<name>/repo.config.yaml` |
+| How strict is Jev? | `jev.gates.<gate>.mode` (`off`, `advisory`, `enforce`), the gate's thresholds, `jev.on_unavailable`. What each gate answered, and what `enforce` would have stopped: `ruby bin/jev_report.rb` |
+| What runs before a change merges? | The `gates` of each `repos/<name>/repo.config.yaml` (fast: after every BUILD and again at merge); its `regression` commands run once per cycle |
 | Which branch? | `pipeline.base_branch` for the application, `base_branch` in each child repository's `repo.config.yaml` |
 | How many changes at once, and how long may things take? | `pipeline.dispatch.workers`, `pipeline.dispatch.wait_seconds`, `pipeline.limits.agent_seconds`, `.agent_budget_usd`, `.gate_seconds`, `.lease_seconds` |
+| What happens to conflicts and to low items? | `pipeline.dispatch.conflict_rebuilds` (automatic rebuilds on the new base before `rebase_conflict`), `pipeline.dispatch.aging_hours` (one priority up per that many hours waiting) |
 | When does it run? | The schedules (`SCHEDULING.md`), not a setting |
 
 ## Change
@@ -48,7 +49,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
    ```
 3. **A list or a text**: edit the file with your edit tool, keeping its comments and style, then run `ruby bin/kit_config.rb check`. This covers the strategies, Jev's thresholds and `qa.skills`. Never rewrite a YAML file through a YAML library: it drops the comments that document every setting.
    - **Strategy**: `slug` (kebab-case, unique), `name`, `kind` (`defects` go to the backlog; `improvements` and `features` become proposals), `directive` (name the application's own modules, screens, flows and paths, as concretely as you would brief a person), optional `needs: browser` (only the visual session runs it) and `enabled: false`.
-   - **Jev threshold or question**: also run `bash bin/jev_contract.sh` (needs the `jev` CLI). Then run `bash bin/jev_contract.sh --live` to recalibrate against the real model; it costs about 11 calls.
+   - **Jev threshold or question**: decide it from `ruby bin/jev_report.rb --gate <gate>` (each question's scores against its threshold, and what enforce would have stopped beside what happened). Then run `bash bin/jev_contract.sh` (needs the `jev` CLI). Then run `bash bin/jev_contract.sh --live` to recalibrate against the real model; it costs about 11 calls.
 4. **Commit and push it, with the person's OK**: `git add <file> && git commit -m "chore(config): <what>" && git push origin <base-branch>`.
    - The cycle's judgment and the visual session may only leave `MEMORY.md`, the backlog and the proposals uncommitted. When either one finds anything else uncommitted, its scope guard pauses the whole system.
    - So commit right after editing. Edit while `bash bin/cycle_status.sh` shows no cycle judging and no visual session.
@@ -70,7 +71,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | The person wants | Run |
 | :--- | :--- |
 | To approve every proposal themselves | `set cycle.proposals.approval human` |
-| Jev to block risky changes | Read its recorded answers first (`log/events.jsonl`, event `jev.answer`), then `set jev.gates.change_risk.mode enforce` |
+| Jev to block risky changes | Read what it answered first, `ruby bin/jev_report.rb --gate change_risk`, then `set jev.gates.change_risk.mode enforce` |
 | No browser session | `set cycle.visual_qa.enabled false` |
 | Another installed agent to judge | `set agents.roles.cycle codex` |
 | Agents limited to an allowlist | `set agents.permissions restricted` |

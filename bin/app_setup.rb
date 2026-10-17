@@ -13,15 +13,17 @@
 #
 # status    what is set up and what is left, in order, each with the command or
 #           file that resolves it: the kit, the project's description (README.md,
-#           ROADMAP.md, openspec/config.yaml), the child repositories, the settings
-#           (bin/kit_config.rb check), the commits, the preflight and the schedules,
+#           ROADMAP.md, the conventions of AGENTS.md, openspec/config.yaml), the
+#           child repositories, the settings (bin/kit_config.rb check), the commits,
+#           the preflight and the schedules,
 #           with this application's own crontab line.
 # add-repo  adds a code repository as a git submodule under repos/ (its default
 #           branch unless --branch), then does what repo does.
 # repo      delivers the kit's templates to repos/<name>: repo.config.yaml from
 #           config/templates/repo.yaml, with the stack, base branch, dev command and
 #           gates it detects in the repository (package.json, Gemfile, pyproject.toml,
-#           go.mod, Cargo.toml), and, when the repository pins a toolchain
+#           go.mod, Cargo.toml; the same test command as its full regression suite,
+#           to be narrowed to related tests), and, when the repository pins a toolchain
 #           (.ruby-version, .nvmrc, .tool-versions, ...), script/env.sh from
 #           config/templates/repo_env.sh with env_script pointing at it. What it
 #           cannot tell stays a {{...}} placeholder, which the gates skip. An
@@ -46,7 +48,16 @@ module AppSetup
   ENV_TEMPLATE = File.join(ROOT, 'config', 'templates', 'repo_env.sh')
   ENV_SCRIPT = 'script/env.sh'
   # Files that pin a toolchain version: the repository needs an env_script.
-  PINS = %w[.ruby-version .nvmrc .node-version .python-version .tool-versions .mise.toml mise.toml].freeze
+  PINS = %w[.ruby-version .nvmrc .node-version .python-version .go-version .tool-versions .mise.toml mise.toml].freeze
+  # Libraries that make a Go or Rust program a web server, or a terminal program.
+  GO_WEB = { 'github.com/gin-gonic/gin' => 'gin', 'github.com/labstack/echo' => 'echo', 'github.com/go-chi/chi' => 'chi',
+             'github.com/gofiber/fiber' => 'fiber', 'github.com/gorilla/mux' => 'gorilla' }.freeze
+  GO_CLI = { 'github.com/spf13/cobra' => 'cobra', 'github.com/urfave/cli' => 'urfave', 'github.com/charmbracelet/bubbletea' => 'bubbletea' }.freeze
+  # Go's fast test gate: the packages of the changed .go files (all of them when go.mod
+  # changed, or when none did); the regression suite runs `go test ./...` every cycle.
+  GO_FAST_TEST = 'pkgs=$(printf "%s\n" "$OPENSPEC_CHANGED_FILES" | sed -nE "s#^(.+)/[^/]+\.go\$#./\1#p; s#^[^/]+\.go\$#.#p" ' \
+                 '| sort -u | while read -r d; do [ -d "$d" ] && echo "$d"; done); ' \
+                 'case "$OPENSPEC_CHANGED_FILES" in *go.mod*|*go.sum*) pkgs="" ;; esac; go test ${pkgs:-./...}'
   NAME = /\A[a-z0-9][a-z0-9._-]{0,62}\z/
 
   class Error < StandardError; end
@@ -99,6 +110,9 @@ module AppSetup
             end
     typescript = deps.key?('typescript') || has.call('tsconfig.json')
     found['stack'] = typescript ? "#{stack}-typescript" : stack
+    found['kind'] = if stack != 'node' || (deps.keys & %w[express fastify koa @hapi/hapi]).any? then 'web'
+                    elsif pkg['bin'] then 'cli'
+                    end
     found['gates']['lint'] = run.call('lint') if scripts['lint']
     check = %w[typecheck type-check check-types tsc].find { |s| scripts[s] }
     exec = { 'npm' => 'npx', 'pnpm' => 'pnpm exec', 'yarn' => 'yarn', 'bun' => 'bunx' }.fetch(pm)
@@ -116,6 +130,9 @@ module AppSetup
     gems = read(File.join(dir, 'Gemfile')) + read(File.join(dir, 'Gemfile.lock'))
     rails = has.call('config/application.rb') || gems.match?(/^\s*gem ['"]rails['"]/)
     found['stack'] = rails ? 'rails' : 'ruby'
+    found['kind'] = if rails || gems.match?(/^\s*gem ['"](sinatra|hanami|roda)['"]/) then 'web'
+                    elsif has.call('exe') || gems.match?(/^\s*gem ['"](thor|dry-cli|tty-\w+)['"]/) then 'cli'
+                    end
     found['gates']['lint'] = 'bundle exec rubocop' if gems.include?('rubocop')
     found['gates']['typecheck'] = 'bundle exec srb tc' if gems.include?('sorbet')
     found['gates']['test'] = if has.call('spec') && gems.include?('rspec') then 'bundle exec rspec'
@@ -124,6 +141,7 @@ module AppSetup
                              end
     return unless rails
 
+    found['setup'] = 'RAILS_ENV=test bin/rails db:prepare' # the slot's test database (OPENSPEC_SLOT)
     found['dev_command'] = has.call('bin/dev') ? 'bin/dev' : 'bin/rails server'
     found['port'] = '3000'
     found['health_endpoint'] = 'http://localhost:3000/up' if read(File.join(dir, 'config/routes.rb')).include?('rails/health')
@@ -141,6 +159,9 @@ module AppSetup
                      elsif text.match?(/flask/i) then 'python-flask'
                      else 'python'
                      end
+    found['kind'] = if found['stack'] != 'python' then 'web'
+                    elsif text.match?(/\[project\.scripts\]|\b(click|typer)\b/) then 'cli'
+                    end
     found['gates']['lint'] = "#{run}ruff check ." if text.include?('ruff')
     found['gates']['typecheck'] = "#{run}mypy ." if text.include?('mypy')
     found['gates']['test'] = if text.include?('pytest') then "#{run}pytest"
@@ -152,20 +173,51 @@ module AppSetup
     found['port'] = '8000'
   end
 
+  # A Go module: a web server when it uses a web library or net/http's server, else a
+  # terminal program. Its main package (cmd/<name>/ or the root) is what dev_command runs.
+  def detect_go(dir, has, found)
+    mod = read(File.join(dir, 'go.mod'))
+    sources = Dir.glob(File.join(dir, '**', '*.go')).reject { |f| f.include?('/vendor/') || f.end_with?('_test.go') }.first(300)
+    code = sources.sum('') { |f| File.size(f) < 200_000 ? read(f) : '' }
+    web = GO_WEB.find { |lib, _| mod.include?(lib) }&.last || ('net-http' if code.match?(/http\.ListenAndServe|&?http\.Server\s*\{/))
+    cli = GO_CLI.find { |lib, _| mod.include?(lib) }&.last
+    mains = Dir.glob(File.join(dir, 'cmd', '*', 'main.go')).map { |f| "./#{File.dirname(f).delete_prefix("#{dir}/")}" }.sort
+    main = mains.find { |m| m.match?(%r{/(server|api|web|app)\z}) && web } || mains.first || ('.' if has.call('main.go'))
+    found['kind'] = web ? 'web' : 'cli'
+    found['stack'] = web ? "go-web#{web == 'net-http' ? '' : "-#{web}"}" : "go-cli#{cli ? "-#{cli}" : ''}"
+    found['dev_command'] = if web && has.call('.air.toml') then 'air'
+                           elsif main then "go run #{main}"
+                           end
+    if web
+      found['port'] = code[/(?:Listen(?:AndServe)?|Run)\(\s*"[^"]*:(\d{2,5})"/, 1] || code[/Addr:\s*"[^"]*:(\d{2,5})"/, 1] || '8080'
+      path = %w[/healthz /health /up /ping].find { |p| code.include?("\"#{p}\"") }
+      found['health_endpoint'] = "http://localhost:#{found['port']}#{path}" if path
+    else
+      found['port'] = '' # a terminal program serves nothing
+      found['health_endpoint'] = ''
+    end
+    lint = %w[.golangci.yml .golangci.yaml .golangci.toml .golangci.json].any? { |f| has.call(f) }
+    found['gates'] = { 'lint' => lint ? 'golangci-lint run' : 'test -z "$(gofmt -l .)" && go vet ./...',
+                       'test' => GO_FAST_TEST, 'build' => 'go build ./...' }
+    found['regression'] = 'go test ./...'
+  end
+
   # What the repository tells about itself; nil values stay placeholders.
   def detect(dir)
     has = ->(f) { File.exist?(File.join(dir, f)) }
-    found = { 'stack' => nil, 'dev_command' => nil, 'port' => nil, 'health_endpoint' => nil, 'gates' => {},
+    found = { 'stack' => nil, 'kind' => nil, 'setup' => nil, 'dev_command' => nil, 'port' => nil, 'health_endpoint' => nil,
+              'gates' => {}, 'regression' => nil,
               'pins' => PINS.select { |f| has.call(f) } }
     if has.call('package.json') then detect_node(dir, has, found)
     elsif has.call('Gemfile') then detect_ruby(dir, has, found)
     elsif has.call('pyproject.toml') || has.call('requirements.txt') then detect_python(dir, has, found)
-    elsif has.call('go.mod')
-      found['stack'] = 'go'
-      found['gates'] = { 'lint' => has.call('.golangci.yml') || has.call('.golangci.yaml') ? 'golangci-lint run' : 'go vet ./...',
-                         'test' => 'go test ./...', 'build' => 'go build ./...' }
+    elsif has.call('go.mod') then detect_go(dir, has, found)
     elsif has.call('Cargo.toml')
+      cargo = read(File.join(dir, 'Cargo.toml'))
       found['stack'] = 'rust'
+      found['kind'] = if cargo.match?(/^(axum|actix-web|rocket|warp|poem)\s*=/) then 'web'
+                      elsif cargo.match?(/^clap\s*=/) || has.call('src/main.rs') then 'cli'
+                      end
       found['gates'] = { 'lint' => 'cargo clippy -- -D warnings', 'typecheck' => 'cargo check', 'test' => 'cargo test',
                          'build' => 'cargo build' }
     end
@@ -200,11 +252,14 @@ module AppSetup
       'REPO_NAME' => name, 'TECH_STACK' => found['stack'], 'BASE_BRANCH' => branch,
       'DEV_COMMAND' => found['dev_command'], 'DEV_PORT' => found['port'], 'HEALTH_ENDPOINT' => found['health_endpoint'],
       'LINT_COMMAND' => found['gates']['lint'], 'TYPECHECK_COMMAND' => found['gates']['typecheck'],
-      'TEST_COMMAND' => found['gates']['test'], 'BUILD_COMMAND' => found['gates']['build']
+      'TEST_COMMAND' => found['gates']['test'], 'BUILD_COMMAND' => found['gates']['build'],
+      'REGRESSION_COMMAND' => found['regression'] || found['gates']['test'], 'APP_KIND' => found['kind']
     }
     text = File.read(TEMPLATE)
-    values.each { |key, value| text = fill(text, "\"{{#{key}}}\"", value.to_json) unless value.to_s.empty? }
+    # nil stays a placeholder; an empty string clears it (a cli has no port).
+    values.each { |key, value| text = fill(text, "\"{{#{key}}}\"", value.to_json) unless value.nil? }
     text = fill(text, 'env_script: ""', "env_script: #{env_script.to_json}") if env_script
+    text = fill(text, 'setup: ""', "setup: #{found['setup'].to_json}") if found['setup']
     YAML.safe_load(text) # the template stays valid YAML
     text
   end
@@ -222,7 +277,7 @@ module AppSetup
     found = detect(dir)
     branch = child_branch(rel_path)
     config = File.join(dir, 'repo.config.yaml')
-    puts "#{rel_path}: stack #{found['stack'] || 'unknown'}, base branch #{branch || 'unknown'}, " \
+    puts "#{rel_path}: stack #{found['stack'] || 'unknown'}, kind #{found['kind'] || 'unknown'}, base branch #{branch || 'unknown'}, " \
          "pins #{found['pins'].empty? ? 'none' : found['pins'].join(', ')}"
     puts "  detected gates: #{found['gates'].empty? ? 'none' : found['gates'].map { |k, v| "#{k}=#{v}" }.join('; ')}"
     puts "  detected dev command: #{found['dev_command'] || 'none'}"
@@ -258,6 +313,7 @@ module AppSetup
     puts 'next:'
     puts "  review repos/#{name}/repo.config.yaml#{env_script ? " and #{ENV_SCRIPT}" : ''} with the person who knows the repository"
     puts "  bash bin/repo_exec.sh #{name} true && bash bin/run_gates.sh --repo #{name}   # every gate must pass on #{branch || 'its base branch'}"
+    puts "  keep gates.test fast (it runs twice per change): narrow it to the related tests with OPENSPEC_CHANGED_FILES; regression.test runs the full suite once per cycle"
     files = ['repo.config.yaml', env_script].compact.join(' ')
     puts "  git -C #{rel_path} add #{files} && git -C #{rel_path} commit -m \"chore: OpenSpec kit settings\" " \
          "&& git -C #{rel_path} push origin #{branch || '<branch>'}"
@@ -299,7 +355,7 @@ module AppSetup
   end
 
   def project_items(lock)
-    items = %w[README.md ROADMAP.md].map do |file|
+    items = %w[README.md ROADMAP.md AGENTS.md].map do |file|
       left = placeholders(File.join(ROOT, file))
       left.empty? ? item('ok', "#{file} filled in") : item('todo', "#{file}: #{left.size} {{...}} placeholder(s) left", "fill #{file} in with the person")
     end

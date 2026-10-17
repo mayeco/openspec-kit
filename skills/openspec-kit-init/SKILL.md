@@ -31,6 +31,7 @@ Ask the person, read the repositories, then write:
 - **`README.md`**: fill in every `{{...}}`: name, description, one row per repository (path, purpose, base branch), how to get started.
 - **`ROADMAP.md`**: the features to build, in priority order, each with the outcome users get and how to tell it works. Take them from the person, never invent them. While `{{...}}` remain, the cycle proposes nothing from the roadmap.
 - **`openspec/config.yaml`**: under `context:`, the constraints agents cannot infer from the code: the artifacts' language, platforms, compliance, domain rules. Keep it short.
+- **`AGENTS.md`**, the guide every agent reads (`CLAUDE.md` points Claude Code at it): fill in its last section, the project's conventions, with what agents must follow here and cannot infer: naming, architecture rules, the language of user-facing text, libraries to use or avoid. Keep the rest as it is.
 - Leave `MEMORY.md` as it is: the cycle curates it.
 
 ## 3. Add the repositories
@@ -44,12 +45,12 @@ ruby bin/app_setup.rb repo <name>                                       # one al
 
 It delivers the kit's templates:
 
-- **`repos/<name>/repo.config.yaml`**, from `config/templates/repo.yaml`, filled with what it detects: the stack, the base branch, the dev command, the port, the health endpoint, and the lint, typecheck, test and build gates.
-- **`script/env.sh`**, from `config/templates/repo_env.sh`, with `env_script` pointing at it, when the repository pins a toolchain (`.ruby-version`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `mise.toml`).
+- **`repos/<name>/repo.config.yaml`**, from `config/templates/repo.yaml`, filled with what it detects. That is the stack and its `kind`: `web`, opened in a browser, or `cli`, a terminal program QA runs with arguments. Then the base branch, the dev command, the port and the health endpoint (empty for a cli), the gates (lint, typecheck, test, build) and the full regression suite. A Go module (`go.mod`) is a web server when it uses gin, echo, chi, fiber, gorilla/mux or `net/http`'s server, and a terminal program otherwise (cobra, urfave/cli, bubbletea). Its test gate runs only the packages of the changed files.
+- **`script/env.sh`**, from `config/templates/repo_env.sh`, with `env_script` pointing at it, when the repository pins a toolchain (`.ruby-version`, `.nvmrc`, `.node-version`, `.python-version`, `.go-version` through goenv, `.tool-versions`, `mise.toml`).
 
 An existing `repo.config.yaml` is kept unless `--force`. Then, for each repository:
 
-1. **Review every value with the person.** Fill in each `{{...}}` it could not detect; the gates skip placeholders with a warning. The template also has a `secrets` gate: keep it if `gitleaks` is installed, otherwise install it or remove the gate. In `script/env.sh`, export what the repository's commands need besides the toolchain (never secrets).
+1. **Review every value with the person.** Fill in each `{{...}}` it could not detect; the gates skip placeholders with a warning. Keep `gates.test` fast: it runs twice per change, and `OPENSPEC_CHANGED_FILES` lists the changed files so it can run only the related tests. `regression.test` keeps the full suite for the cycle. When changes build in parallel, give each worker its own test database: `OPENSPEC_SLOT` becomes `TEST_ENV_NUMBER` in `script/env.sh`, the database name must use it, and the `setup` gate creates it. The template also has a `secrets` gate: keep it if `gitleaks` is installed, otherwise install it or remove the gate. In `script/env.sh`, export what the repository's commands need besides the toolchain (never secrets).
 2. **Prove it works:**
    ```bash
    bash bin/repo_exec.sh <name> true          # the environment loads

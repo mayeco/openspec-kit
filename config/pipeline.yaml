@@ -16,6 +16,15 @@ dispatch:
   workers: 2 # changes one dispatch builds in parallel; OPENSPEC_WORKERS
   wait_seconds: 1800 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
   merge_interval_seconds: 10 # how often a watching merger looks for ready changes; OPENSPEC_MERGE_INTERVAL
+  # A change whose code no longer rebases onto the base branch (another change edited
+  # the same lines first) is rebuilt on the new base this many times before it waits
+  # for a human as rebase_conflict. 0: never rebuild. OPENSPEC_CONFLICT_REBUILDS
+  conflict_rebuilds: 1
+  # Every this many hours an item waits in the backlog, it is ordered one priority
+  # higher (low, normal, high, critical), so low items are not starved by a steady
+  # flow of higher ones. Its priority in the backlog does not change. 0: off.
+  # OPENSPEC_AGING_HOURS
+  aging_hours: 6
 
 limits:
   agent_seconds: 3600 # one agent call; AGENT_TIMEOUT_SECONDS

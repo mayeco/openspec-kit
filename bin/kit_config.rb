@@ -69,6 +69,8 @@ module KitConfig
   GATES = {
     'plan_review' => 'J1, bin/openspec_dispatcher.rb after openspec validate --strict: enforce sends failures back to the plan agent',
     'failure_triage' => 'J2, bin/openspec_dispatcher.rb when gates fail in BUILD: enforce re-runs a flaky gate once, escalates ambiguity',
+    'repair_progress' => 'J2, bin/openspec_dispatcher.rb when gates fail again after a repair: enforce quarantines a change that is not converging (repair_stalled)',
+    'scenario_coverage' => "J7, bin/openspec_dispatcher.rb after BUILD's gates pass: enforce sends scenarios without a real test back to the BUILD agent",
     'change_risk' => 'J3, bin/openspec_dispatcher.rb after BUILD: enforce quarantines a risky change as risk_review',
     'task_priority' => "J5, the cycle's judgment before it queues a backlog item",
     'proposal_review' => 'J6, bin/proposals.rb after each judgment when proposals.approval is jev: enforce queues what passes'
@@ -86,6 +88,9 @@ module KitConfig
     'dispatch.workers' => ['changes one dispatch builds in parallel', 'bin/openspec_dispatcher.rb'],
     'dispatch.wait_seconds' => ["how long a cycle's dispatch waits while changes wait on merges", 'bin/openspec_dispatcher.rb'],
     'dispatch.merge_interval_seconds' => ['how often a watching merger looks for ready changes', 'bin/openspec_merger.rb'],
+    'dispatch.conflict_rebuilds' => ['automatic rebuilds of a change whose code no longer rebases onto the base branch, before rebase_conflict; 0: none',
+                                     'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
+    'dispatch.aging_hours' => ['every this many hours an item waits, it is ordered one priority higher; 0: off', 'bin/openspec_dispatcher.rb'],
     'limits.agent_seconds' => ['limit of one agent call', 'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
     'limits.agent_budget_usd' => ["Claude Code's spending cap per call", 'bin/agent_exec.sh'],
     'limits.gate_seconds' => ["limit of one repository's gates", 'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
@@ -246,11 +251,12 @@ module KitConfig
     cfg = File.exist?(cfg_file) ? (YAML.safe_load_file(cfg_file) || {}) : nil
     gates = (cfg&.fetch('gates', nil) || {}).to_h
     {
-      'repo' => rel, 'config' => cfg ? 'repo.config.yaml' : nil,
+      'repo' => rel, 'config' => cfg ? 'repo.config.yaml' : nil, 'kind' => cfg&.fetch('kind', nil),
       'base_branch' => cfg && !placeholder?(cfg['base_branch']) && cfg['base_branch'].to_s != '' ? cfg['base_branch'] : nil,
       'env_script' => cfg&.fetch('env_script', nil).to_s.strip,
       'dev_command' => cfg&.dig('service', 'dev_command'),
-      'gates' => gates.transform_values { |c| c.to_s.strip.empty? || placeholder?(c) ? 'skipped' : c.to_s }
+      'gates' => gates.transform_values { |c| c.to_s.strip.empty? || placeholder?(c) ? 'skipped' : c.to_s },
+      'regression' => (cfg&.fetch('regression', nil) || {}).to_h.reject { |_, c| c.to_s.strip.empty? || placeholder?(c) }
     }
   rescue Psych::Exception => e
     { 'repo' => rel, 'error' => "repo.config.yaml is not valid YAML: #{e.message}" }
@@ -327,9 +333,9 @@ module KitConfig
           lines << "  #{r['repo']}: no repo.config.yaml (no gates; base branch from .gitmodules or main)"
         else
           gates = r['gates'].map { |name, cmd| cmd == 'skipped' ? "#{name} (skipped)" : name }.join(', ')
-          lines << "  #{r['repo']}: base #{r['base_branch'] || '(from .gitmodules or main)'}, env_script " \
+          lines << "  #{r['repo']} (#{r['kind'] || 'kind unset'}): base #{r['base_branch'] || '(from .gitmodules or main)'}, env_script " \
                    "#{r['env_script'].empty? ? 'none' : r['env_script']}, dev #{format_value(r['dev_command'])}, " \
-                   "gates #{gates.empty? ? 'none' : gates}"
+                   "gates #{gates.empty? ? 'none' : gates}, regression #{r['regression'].empty? ? 'the gates' : r['regression'].keys.join(', ')}"
         end
       end
     end
@@ -543,6 +549,10 @@ module KitConfig
     end
     left = leaf_keys(cfg, 'cfg').select { |k| placeholder?(cfg.dig(*k.split('.').drop(1))) }.map { |k| k.delete_prefix('cfg.') }
     report[:warnings] << "placeholders left: #{left.join(', ')}" if left.any?
+    kind = cfg['kind']
+    unless kind.nil? || placeholder?(kind) || %w[web cli].include?(kind)
+      report[:warnings] << "kind #{kind.inspect}: web or cli (QA opens a web application in a browser and runs a cli)"
+    end
     script = cfg['env_script'].to_s.strip
     report[:errors] << "env_script #{script} does not exist: every command of the repository fails" if !script.empty? && !File.file?(File.join(dir, script))
     gates = (cfg['gates'] || {}).to_h.reject { |_, c| c.to_s.strip.empty? || placeholder?(c) }

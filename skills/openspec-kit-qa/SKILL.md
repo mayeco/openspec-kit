@@ -20,6 +20,7 @@ The pipeline's own gates only run the tests of the repositories a change touched
 - Read-only on code and specifications. When run by the cycle, write only what the `openspec-kit-cycle` hard rules allow: `config/agent_backlog.json`, `config/agent_proposals.json`, `MEMORY.md`, `log/cycle/**`.
 - Save evidence (command output, response bodies, screenshots) under `log/cycle/evidence/<stamp>/`, never under `repos/` or `openspec/`.
 - Run a repository's commands, its application included (`service.dev_command` of its `repo.config.yaml`), through `bash bin/repo_exec.sh repos/<name> <command>`, so they get the toolchain the repository pins.
+- `kind` in a repository's `repo.config.yaml` says how to exercise it. A `web` application is opened over HTTP, or in a browser by the visual QA session. A `cli` is a terminal program: run it with each scenario's inputs, `bash bin/repo_exec.sh repos/<name> <service.dev_command> <arguments>`, and compare its output, error output, exit code and the files it writes with the THEN. The visual session never checks changes that only touch `cli` repositories, so verify those yourself.
 - Local hosts only. Never read `.env*`, key files or credentials, and never send them to Jev.
 - Reproduce a defect twice, from a clean start, before recording it. Not reproducible: `needs_triage` with the evidence.
 
@@ -38,7 +39,7 @@ For each change listed under "Integrated changes":
 ## Regression sweep
 
 - Map the files the integrated changes touched to the behavior that uses them: handlers to their routes, models to their forms and endpoints, jobs to their triggers. Exercise those paths, not only the new ones.
-- Once per cycle in which anything was integrated, run every gate: `bash bin/run_gates.sh --all`. Compare the failures with `test_baseline` in `state.json`: a failure that is not in the baseline is a regression. Update the baseline.
+- Once per cycle in which anything was integrated, run the regression suite of every repository: `bash bin/run_gates.sh --all --regression` (each repository's `regression` commands, usually its full suite, or its gates when it has none). Compare the failures with `test_baseline` in `state.json`: a failure that is not in the baseline is a regression. Update the baseline.
 
 ## Explore one area
 

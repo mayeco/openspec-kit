@@ -1,0 +1,12 @@
+# J2 - Repair progress. Asked by the dispatcher when BUILD's gates fail again after a
+# repair round, before it spends another one.
+# State (JSON): change, previous_gate_output (what the agent was asked to fix),
+# gate_output (the result after its repair), delta_specs{capability: text}.
+# Thresholds live in config/jev_policy.yaml.
+questions:
+  converging:
+    type: noul
+    instructions: Comparing previous_gate_output with gate_output, did the repair make progress toward passing the gates?
+    criteria:
+      "true": Fewer or narrower failures remain, or failures that were there before are gone and the run now stops at a later step, so another repair round is likely to finish the work.
+      "false": The same tests fail with the same errors, or the repair broke more than it fixed, so another repair round is unlikely to help.

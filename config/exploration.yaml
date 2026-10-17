@@ -13,7 +13,7 @@
 #   slug       unique id, kebab-case
 #   name       short title
 #   kind       defects       confirmed defects and regressions become backlog items
-#                            (config/agent_backlog.json), built by the next dispatch
+#                            (config/agent_backlog.json), built as soon as a worker is free
 #              improvements  findings become proposals (config/agent_proposals.json)
 #              features      missing capabilities become proposals
 #   directive  what to look at and what to look for

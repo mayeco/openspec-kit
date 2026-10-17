@@ -83,6 +83,7 @@ module VisualQA
     queue = load
     head = git('rev-parse', 'HEAD').strip
     added = []
+    skipped = []
     # A history rewritten under the queue (a reset base branch) restarts it here.
     queue['last_sha'] = nil unless queue['last_sha'].nil? || system('git', 'merge-base', '--is-ancestor', queue['last_sha'], head, chdir: ROOT, err: File::NULL)
     if queue['last_sha'] && queue['last_sha'] != head
@@ -92,6 +93,7 @@ module VisualQA
         sha, changes = line.chomp.split("\t", 2)
         changes.to_s.split(',').map(&:strip).reject(&:empty?).each do |change|
           next if queue['items'].any? { |i| i['change'] == change && i['kind'] == 'verify' && i['status'] == 'pending' }
+          next skipped << change if terminal_only?(sha)
 
           added << add(queue, 'kind' => 'verify', 'change' => change, 'detail' => "integrated in #{sha[0, 12]}")
         end
@@ -99,7 +101,20 @@ module VisualQA
     end
     queue['last_sha'] = head
     save(queue)
-    puts "visual-qa: #{added.size} integrated change(s) queued; #{queue['items'].count { |i| i['status'] == 'pending' }} pending"
+    note = skipped.empty? ? '' : "; #{skipped.size} only touched terminal programs (#{skipped.join(', ')}): the headless cycle verifies them"
+    puts "visual-qa: #{added.size} integrated change(s) queued#{note}; #{queue['items'].count { |i| i['status'] == 'pending' }} pending"
+  end
+
+  # A change whose child repositories are all terminal programs (kind: cli in their
+  # repo.config.yaml) has nothing to show in a browser.
+  def terminal_only?(sha)
+    repos = git('show', '--format=', '--name-only', sha).lines.map(&:strip).grep(%r{\Arepos/[^/]+\z})
+    repos.any? && repos.all? do |repo|
+      cfg = File.join(ROOT, repo, 'repo.config.yaml')
+      (File.exist?(cfg) && (YAML.safe_load_file(cfg) || {})['kind']) == 'cli'
+    rescue Psych::Exception
+      false
+    end
   end
 
   def request(detail, change)

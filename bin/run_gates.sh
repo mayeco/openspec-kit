@@ -7,26 +7,32 @@
 #   bin/run_gates.sh --base origin/master   # repos changed vs a base ref (committed + uncommitted)
 #   bin/run_gates.sh --all               # every child repo with a repo.config.yaml
 #   bin/run_gates.sh --repo backend      # explicit repo (repeatable)
+#   bin/run_gates.sh --all --regression  # the cycle's sweep: each repo's regression commands
 #
-# Gates per repo come from repos/<name>/repo.config.yaml: lint, typecheck, test,
-# build, then any extra keys (e.g. secrets) in file order. Empty or un-instantiated ({{...}}) commands
-# are skipped with a warning. A repository's gates run through bin/repo_exec.sh,
-# so its env_script (repo.config.yaml) prepares the toolchain first. The OpenSpec
-# layer is validated whenever anything under openspec/ changed. Exit 0 = all
-# executed gates passed.
+# Gates per repo come from repos/<name>/repo.config.yaml: setup, lint, typecheck,
+# test, build, then any extra keys (e.g. secrets) in file order. --regression runs
+# the repo's `regression` commands instead (after its setup gate), or its gates
+# when it has none: the full suite once per cycle, fast gates for every change.
+# Empty or un-instantiated ({{...}}) commands are skipped with a warning. Each
+# command runs through bin/repo_exec.sh, so the repo's env_script prepares the
+# toolchain first, and sees OPENSPEC_CHANGED_FILES: the repo's files changed
+# against the base, one per line, to run only related tests. The OpenSpec layer is
+# validated whenever anything under openspec/ changed. Exit 0 = all executed gates passed.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE=""
 ALL=0
+REGRESSION=0
 REPOS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) ALL=1 ;;
+    --regression) REGRESSION=1 ;;
     --base) BASE="${2:?--base needs a ref}"; shift ;;
     --repo) REPOS+=("${2:?--repo needs a name}"); shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "run_gates: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -96,6 +102,11 @@ for name in $(printf '%s\n' "${REPOS[@]+"${REPOS[@]}"}" | sort -u); do
     echo "---- [warn] repos/${name}: no repo.config.yaml, no gates defined"
     continue
   fi
+  # What this change touched in the repository: its files against the gitlink the base records.
+  child_base="$(git rev-parse --verify --quiet "${BASE:-HEAD}:repos/${name}" 2>/dev/null || true)"
+  OPENSPEC_CHANGED_FILES="$( { [ -n "$child_base" ] && git -C "$dir" diff --name-only "$child_base" 2>/dev/null
+    git -C "$dir" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)"
+  export OPENSPEC_CHANGED_FILES
   while IFS=$'\t' read -r gate cmd; do
     [ -z "$gate" ] && continue
     case "$cmd" in
@@ -104,12 +115,17 @@ for name in $(printf '%s\n' "${REPOS[@]+"${REPOS[@]}"}" | sort -u); do
     esac
   done < <(ruby -ryaml -e '
     cfg = YAML.safe_load_file(ARGV[0]) || {}
+    usable = ->(set) { (set || {}).select { |_, v| v.is_a?(String) && !v.strip.empty? && !v.include?("{{") } }
     gates = cfg.fetch("gates", {}) || {}
-    standard = %w[lint typecheck test build]
+    # The sweep runs the regression commands when the repo has any, after its setup gate.
+    if ARGV[1] == "1" && usable.call(cfg["regression"]).any?
+      gates = { "setup" => gates["setup"] }.merge(cfg["regression"])
+    end
+    standard = %w[setup lint typecheck test build]
     (standard + (gates.keys - standard)).each do |k|
       v = gates[k]
       puts "#{k}\t#{v}" if v.is_a?(String) && !v.strip.empty?
-    end' "$cfg")
+    end' "$cfg" "$REGRESSION")
 done
 
 echo "========================================================================"

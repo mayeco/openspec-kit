@@ -10,7 +10,7 @@
 #     condition that names a missing question, exit 2);
 #   - every routing rule names an existing question and option;
 #   - the policy pins a versioned model id.
-# --live (about 11 API calls, well under $0.001):
+# --live (about 15 API calls, well under $0.001):
 #   - the key is accepted and the pinned model answers;
 #   - the canary: an obvious yes passes (exit 0), an obvious no fails (exit 10);
 #   - each gate's known-good and known-bad fixture lands on the right side of
@@ -48,7 +48,7 @@ for f in config/templates/jev/*.yaml; do
   check "$(basename "$f") passes jev validate --strict" jev validate -f "$f" --strict -o json --quiet
 done
 check "policy pins a versioned model ($MODEL)" bash -c "[[ '$MODEL' =~ ^jev-[0-9]+\.[0-9]+\.[0-9]+$ ]]"
-for gate in plan_review failure_triage change_risk proposal_review; do
+for gate in plan_review failure_triage repair_progress scenario_coverage change_risk proposal_review; do
   file="$(policy_get gates "$gate" file)"
   fixture="$(ls "$FIX/$gate".*.json | head -1)"
   assert_args "$gate"
@@ -126,6 +126,18 @@ if [ "$LIVE" -eq 1 ]; then
   ask config/templates/jev/proposal_review.yaml "$FIX/proposal_review.bad.json" "${ASSERT_ARGS[@]}" >/dev/null 2>&1; RC=$?
   check "proposal_review: bundled, risky proposal waits for a human (exit $RC)" test "$RC" -eq 10
   rm -f /tmp/jev_prop.$$
+
+  passes_and_fails() { # <gate> <good fixture> <bad fixture> <what passes> <what fails>
+    local out
+    assert_args "$1"
+    out="$(ask "config/templates/jev/$1.yaml" "$FIX/$1.$2.json" "${ASSERT_ARGS[@]}" 2>&1)"; RC=$?
+    check "$1: $4 (exit $RC)" test "$RC" -eq 0
+    [ "$RC" -ne 0 ] && printf '%s' "$out" | field gate conditions 2>/dev/null | sed 's/^/          /'
+    ask "config/templates/jev/$1.yaml" "$FIX/$1.$3.json" "${ASSERT_ARGS[@]}" >/dev/null 2>&1; RC=$?
+    check "$1: $5 (exit $RC)" test "$RC" -eq 10
+  }
+  passes_and_fails scenario_coverage good bad "tests asserting every scenario pass" "a scenario without a real test goes back for repair"
+  passes_and_fails repair_progress converging stalled "narrower failures spend another round" "the same failures again stop the repairs"
 fi
 
 echo "========================================================================"

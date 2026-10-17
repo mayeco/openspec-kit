@@ -11,7 +11,8 @@ The kit lets AI agents specify, build, verify and integrate an application with 
 | OpenSpec CLI (verified 1.14.1) | Specifications, validation, archive | `brew install openspec` |
 | At least one agent CLI, logged in | Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), Hermes (`hermes`), OpenCode (`opencode`) | Their own installers |
 | GNU timeout (recommended) | Bounds every agent call | `brew install coreutils` |
-| Jev (optional) | A calibrated judge for plans, risk and proposals | `brew install shaharia-lab/tap/jev`, then `jev auth login` |
+| The version managers your repositories use | A repository's `env_script` loads the version it pins: rbenv or RVM, nvm or fnm, pyenv, goenv (`.go-version`), mise or asdf | `brew install goenv`, ... |
+| Jev (optional) | A calibrated judge for plans, failures and repairs, test coverage, risk and proposals | `brew install shaharia-lab/tap/jev`, then `jev auth login` |
 
 ## 2. Get a release
 
@@ -49,8 +50,10 @@ xyz/
 ├── .claude/skills/ ...      a copy for each other selected agent
 ├── openspec/                specifications (created by `openspec init`)
 ├── README.md  ROADMAP.md    placeholders to fill in
+├── AGENTS.md  CLAUDE.md     the guide every agent reads; fill in its project conventions
 ├── MEMORY.md                long-term memory every agent reads first
 ├── INSTALL.md  SCHEDULING.md
+├── .gitignore  log/.keep    runtime state stays out of git; log/ is kept by its .keep
 └── .openspec-kit.lock       the installed release and the checksum of every kit file
 ```
 
@@ -78,12 +81,12 @@ Ask your agent to set the application up: the `openspec-kit-init` skill walks th
 ruby bin/app_setup.rb status
 ```
 
-1. Fill the `{{...}}` placeholders of `README.md` and `ROADMAP.md`. The roadmap lists the features to build, in priority order; the cycle proposes the next ones.
+1. Fill the `{{...}}` placeholders of `README.md`, `ROADMAP.md` and the project conventions at the end of `AGENTS.md`, the guide every agent reads (`CLAUDE.md` points Claude Code at it). The roadmap lists the features to build, in priority order; the cycle proposes the next ones.
 2. Describe the project in `openspec/config.yaml` (context and rules for the agents).
 3. Review the settings: `ruby bin/kit_config.rb show` explains each one (its value, its default, the script that reads it), and `ruby bin/kit_config.rb check` validates them; the `openspec-kit-config` skill changes them for you. Review `config/cycle.yaml` (time budget, roadmap caps, `proposals.approval`: `jev`, `human` or `auto`, `visual_qa`) and `config/exploration.yaml` (replace the generic strategies with your own screens, flows and paths).
 4. Set the application's base branch in `config/pipeline.yaml` if it is not `master` (`ruby bin/kit_config.rb set pipeline.base_branch main`), and, there too, how many changes build at once and the limits of agent calls and gates.
 5. Choose the agents' permissions in `config/agents.yaml`: `all` (default) lets agents run any command except the git commands only the scripts run; `restricted` keeps Claude Code on an allowlist.
-6. With Jev: keep `config/jev_policy.yaml` in `advisory` mode until you have read its answers, and calibrate it with `bash bin/jev_contract.sh --live`.
+6. With Jev: keep `config/jev_policy.yaml` in `advisory` mode until you have read its answers (`ruby bin/jev_report.rb` puts each gate's answers beside what happened to each change), and calibrate it with `bash bin/jev_contract.sh --live`.
 
 ## 5. Add the application's repositories
 
@@ -94,7 +97,7 @@ cd xyz
 ruby bin/app_setup.rb add-repo <backend-repository-url> --name backend    # or: ruby bin/app_setup.rb repo backend, for one already there
 ```
 
-It adds the submodule on the repository's default branch (`--branch` to choose), writes `repos/backend/repo.config.yaml` from `config/templates/repo.yaml` with the stack, base branch, dev command and gates it detects (`package.json`, `Gemfile`, `pyproject.toml`, `go.mod`, `Cargo.toml`), and, when the repository pins a toolchain (`.ruby-version`, `.nvmrc`, `.tool-versions`, ...), copies `config/templates/repo_env.sh` to `repos/backend/script/env.sh` and sets `env_script` to it. What it cannot tell stays a `{{...}}` placeholder, which the gates skip.
+It adds the submodule on the repository's default branch (`--branch` to choose). It writes `repos/backend/repo.config.yaml` from `config/templates/repo.yaml` with the stack, the `kind` (`web` or `cli`), the base branch, the dev command and the gates it detects (`package.json`, `Gemfile`, `pyproject.toml`, `go.mod`, `Cargo.toml`). A Go module is a web server when it uses gin, echo, chi, fiber, gorilla/mux or `net/http`'s server, and a terminal program otherwise. When the repository pins a toolchain (`.ruby-version`, `.nvmrc`, `.python-version`, `.go-version` for goenv, `.tool-versions`, ...), it also copies `config/templates/repo_env.sh` to `repos/backend/script/env.sh` and sets `env_script` to it. What it cannot tell stays a `{{...}}` placeholder, which the gates skip.
 
 By hand, the same is:
 
@@ -105,7 +108,10 @@ mkdir -p repos/backend/script && cp config/templates/repo_env.sh repos/backend/s
 # then set   env_script: "script/env.sh"   in repos/backend/repo.config.yaml
 ```
 
-Review `repos/backend/repo.config.yaml`: `base_branch`, the dev command and the gates (lint, typecheck, test, build) must be right, and every gate must pass on the base branch today.
+Review `repos/backend/repo.config.yaml`: `base_branch`, the dev command and the gates (setup, lint, typecheck, test, build) must be right, and every gate must pass on the base branch today. Two things matter because changes build in parallel:
+
+- **Gates in two levels.** `gates` run after every BUILD and again at merge, so keep them fast. Each command sees `OPENSPEC_CHANGED_FILES`, the repository's changed files, so `test` can run only the related tests. `regression.test` holds the full suite, which the cycle runs once per cycle.
+- **A test database and a port per worker.** Each worker's commands see `OPENSPEC_SLOT`, and the `repo_env.sh` template turns it into `TEST_ENV_NUMBER` and `PORT`. Make the test database name use it (Rails: `database: app_test<%= ENV['TEST_ENV_NUMBER'] %>` in `config/database.yml`), and let a `setup` gate create it (`RAILS_ENV=test bin/rails db:prepare`). Two changes must never run their tests against one database.
 
 Check them through the kit, then commit both files inside the child repository and push them to its base branch:
 

@@ -31,6 +31,8 @@ class OpenSpecMerger
 
   # A push was rejected (usually a concurrent push to the same base): retry from the top.
   class PushRejected < StandardError; end
+  # A child no longer rebases onto its base: the dispatcher rebuilds the change on the new base.
+  class SendBack < StandardError; end
 
   def run(watch:, interval:)
     O.ensure_dirs!
@@ -115,8 +117,10 @@ class OpenSpecMerger
       attempts += 1
       integrate_once(m)
       cleanup_worker!(m)
-      FileUtils.rm_f(path)
+      FileUtils.rm_f([path, O.rebuild_file(change)])
       update_state('IDLE', 'change' => nil)
+    rescue SendBack => e
+      send_back!(path, m, e.message)
     rescue PushRejected => e
       O.emit('merge.push_rejected', change: change, attempt: attempts, error: e.message[0, 300])
       retry if attempts < MAX_ATTEMPTS
@@ -130,6 +134,24 @@ class OpenSpecMerger
     # way: pause so process_queue stops here instead of quarantining them all.
     O.pause!("#{err.reason} (#{change}): #{err.details.lines.first&.strip}")
     block!(path, m, err)
+  end
+
+  # Up to dispatch.conflict_rebuilds times, a change whose code no longer rebases
+  # onto the base goes back to the dispatcher instead of waiting for a human: the
+  # manifest is dropped, the worktree and branch stay, and log/rebuilds/<change>.json
+  # asks for the rebuild, which the dispatcher does on the new base.
+  def send_back!(path, m, details)
+    change = m['change_name']
+    record = O.read_json(O.rebuild_file(change)) || {}
+    O.write_json_atomic(O.rebuild_file(change), record.merge('requested' => true, 'conflict' => details[0, 4000],
+                                                             'requested_at' => Time.now.utc.iso8601))
+    FileUtils.rm_f(path)
+    O.emit('merge.sent_back', change: change, reason: 'rebase_conflict', rebuilds: record['rebuilds'].to_i)
+    update_state('IDLE', 'change' => nil)
+  end
+
+  def rebuild_allowed?(change)
+    (O.read_json(O.rebuild_file(change)) || {})['rebuilds'].to_i < OpenSpecSettings.get(O::ROOT, 'dispatch.conflict_rebuilds')
   end
 
   def block!(path, m, error)
@@ -192,6 +214,7 @@ class OpenSpecMerger
     # 5. Gates on exactly what will be pushed, using the base branch's gate script.
     update_state('RUNNING_GATES')
     gates = O.run(['bash', 'bin/run_gates.sh', '--base', fork_point], chdir: wt, timeout: GATE_TIMEOUT,
+                                                                     env: { 'OPENSPEC_SLOT' => O::MERGER_SLOT.to_s },
                                                                      log: File.join(O::WORKER_LOG_DIR, "#{change}.merge.log"))
     raise O::Blocked.new('gate_failure', gates.tail(120)) unless gates.ok?
 
@@ -295,6 +318,8 @@ class OpenSpecMerger
     res = O.git(['rebase', "#{O::REMOTE}/#{base}"], chdir: child)
     unless res.ok?
       O.git(%w[rebase --abort], chdir: child)
+      raise SendBack, "#{path}: #{res.tail(40)}" if rebuild_allowed?(m['change_name'])
+
       raise O::Blocked.new('rebase_conflict', "#{path}: #{res.tail(40)}")
     end
     O.git!(%w[rev-parse HEAD], chdir: child)

@@ -37,7 +37,12 @@ Encoding.default_external = Encoding::UTF_8
 module OpenSpecKit
   LOCK = '.openspec-kit.lock'
   MANIFEST = 'MANIFEST.json'
-  GITIGNORE_LINES = ['.worktrees/', 'log/'].freeze
+  # What the kit needs ignored, and the spellings an existing .gitignore may already use.
+  # New applications get the .gitignore seed; an existing one gets what it lacks.
+  GITIGNORE = {
+    '/.worktrees/' => %w[.worktrees/ /.worktrees/ .worktrees /.worktrees],
+    '/log/*' => %w[log/ /log/ log /log log/* /log/*]
+  }.freeze
 
   class Error < StandardError; end
 
@@ -192,8 +197,9 @@ module OpenSpecKit
 
   def append_gitignore(target)
     path = File.join(target, '.gitignore')
-    present = File.exist?(path) ? File.readlines(path, chomp: true) : []
-    missing = GITIGNORE_LINES - present
+    present = File.exist?(path) ? File.readlines(path, chomp: true).map(&:strip) : []
+    missing = GITIGNORE.reject { |_, spellings| (spellings & present).any? }.keys
+    missing << '!/log/.keep' if missing.include?('/log/*') # log/ itself stays, through its .keep
     return if missing.empty?
 
     File.open(path, 'a') do |f|

@@ -74,13 +74,14 @@ Jev is a calibrated judge: it answers a typed question with a probability, never
 
 - Run `bash bin/completed_since.sh <last_cycle.umbrella_sha>`: it lists the changes the merger integrated since then, the child commits behind them, their completed tasks and the lessons in their `handoff.md`.
 - Verify each integrated change with the `openspec-kit-qa` skill ("Verify integrated changes"). Record each verdict in `verified`; a broken scenario is a regression and becomes a `fix-<short-name>` backlog item with `"priority": "critical"` and the evidence in `description`.
-- Review the `jev.answer` events in `log/events.jsonl` since the last cycle: note gates whose answers sit inside the abstain band or contradict what happened. That is calibration evidence for the report.
+- Run `ruby bin/jev_report.rb --since 24h`: it puts each gate's answers beside what happened to the changes it judged. Note gates whose answers sit inside the abstain band, or that would have stopped changes that integrated well or let through ones that were blocked. That is calibration evidence for the report.
 
 ### 3. Triage blocked changes
 
 - For each `log/blocked/<change>.json`, read `reason` and `details` and the worker log under `log/workers/`, and write a diagnosis and the recommended human action into the report.
 - For `gate_failure`, the dispatcher's own question file gives a second opinion: `jev eval -f config/templates/jev/failure_triage.yaml --state-file <log excerpt> --model <model> --field answers.cause`.
 - For `risk_review`, list what Jev flagged; only a human approves it.
+- For `scenario_coverage`, name the scenarios Jev found without a test that asserts their outcome; for `repair_stalled`, say what kept failing across the repairs, which usually means the plan or a test is wrong rather than the code.
 - Create `log/PAUSE` (one line saying why) only for a systemic failure: the same reason blocking three or more changes, or gates failing on the base branch.
 - Count the cycle as failed in `consecutive_failures` when everything the previous dispatch started ended blocked; reset it when something was integrated. While a dispatch is still running, leave the count as it is. At `max_consecutive_failures`, queue and propose nothing and say in the report that a human is needed.
 

@@ -26,6 +26,8 @@ module OpenSpecSettings
     'dispatch.workers' => ['OPENSPEC_WORKERS', 2],
     'dispatch.wait_seconds' => ['OPENSPEC_WAIT_TIMEOUT', 1800],
     'dispatch.merge_interval_seconds' => ['OPENSPEC_MERGE_INTERVAL', 10],
+    'dispatch.conflict_rebuilds' => ['OPENSPEC_CONFLICT_REBUILDS', 1],
+    'dispatch.aging_hours' => ['OPENSPEC_AGING_HOURS', 6],
     'limits.agent_seconds' => ['AGENT_TIMEOUT_SECONDS', 3600],
     'limits.agent_budget_usd' => ['AGENT_MAX_BUDGET_USD', 5],
     'limits.gate_seconds' => ['OPENSPEC_GATE_TIMEOUT', 2700],
@@ -33,6 +35,8 @@ module OpenSpecSettings
   }.freeze
   # Amounts of money may have decimals; every other number is a whole one.
   DECIMAL = %w[limits.agent_budget_usd].freeze
+  # Counts where 0 turns the behavior off; every other number must be above 0.
+  ZERO_OK = %w[dispatch.conflict_rebuilds dispatch.aging_hours].freeze
   BRANCH = %r{\A[A-Za-z0-9._/-]+\z}
 
   class Error < StandardError; end
@@ -71,12 +75,13 @@ module OpenSpecSettings
       number&.positive? ? (number == number.to_i ? number.to_i : number) : nil
     else
       number = Integer(text, 10, exception: false)
-      number&.positive? ? number : nil
+      number && (number.positive? || (number.zero? && ZERO_OK.include?(key))) ? number : nil
     end
   end
 
   def expected(key)
     return 'a branch name' if key == 'base_branch'
+    return 'a whole number, 0 or more' if ZERO_OK.include?(key)
 
     DECIMAL.include?(key) ? 'a number above 0' : 'a whole number above 0'
   end

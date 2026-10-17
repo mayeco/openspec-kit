@@ -13,7 +13,7 @@ Everything it writes is in English.
 
 | Part | Run by | Does |
 | :--- | :--- | :--- |
-| Headless cycle | `bin/run_cycle.sh` | Queues every change the merger integrated (`ruby bin/visual_qa.rb enqueue-integrated`); its judgment asks for checks only a browser can make (`ruby bin/visual_qa.rb request`); it does not judge while a session holds `log/visual_qa.lock` |
+| Headless cycle | `bin/run_cycle.sh` | Queues every change the merger integrated (`ruby bin/visual_qa.rb enqueue-integrated`), except the ones that only touch terminal programs (`kind: cli` in their `repo.config.yaml`); its judgment asks for checks only a browser can make (`ruby bin/visual_qa.rb request`); it does not judge while a session holds `log/visual_qa.lock` |
 | `bash bin/visual_qa.sh begin` | This session | Takes the lock (refused while a cycle judges), synchronises the checkout, claims up to `visual_qa.max_items_per_session` queued checks, picks the next strategy with `needs: browser` of `config/exploration.yaml`, writes the plan `log/cycle/visual-<stamp>.md` |
 | You | The agent app's own browser, desktop and the application's QA skills (`qa.skills`) | The procedure below |
 | `bash bin/visual_qa.sh end` | This session | Returns the checks you did not close to the queue, applies the scope guard, reviews proposals, commits and pushes `MEMORY.md`, the backlog and the proposals, releases the lock |

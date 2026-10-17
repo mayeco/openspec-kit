@@ -3,8 +3,8 @@
 # ==============================================================================
 # Framework lane: humans edit this file. Jev answers typed questions with
 # probabilities, never text; this file turns those numbers into decisions.
-# Roll out every gate as `advisory`, review the recorded answers (log/events.jsonl,
-# event jev.answer), tune thresholds, then switch to `enforce`.
+# Roll out every gate as `advisory`, review what it answered beside what happened to
+# each change (ruby bin/jev_report.rb), tune thresholds, then switch to `enforce`.
 
 model: jev-1.14.0 # pinned versioned id
 timeout: 30s # per attempt
@@ -36,6 +36,19 @@ gates:
       question: cause
       choice: requirement_ambiguity
       min_confidence: 0.8
+
+  repair_progress: # J2: dispatcher, when BUILD's gates fail again after a repair round
+    mode: advisory # enforce: a change that is not converging is quarantined as repair_stalled instead of spending another round
+    file: config/templates/jev/repair_progress.yaml
+    assert: # only a confident "no" stops the repairs; anything else spends the next round
+      - "converging >= 0.25"
+
+  scenario_coverage: # J7: dispatcher, after BUILD's gates pass, before change_risk
+    mode: advisory # enforce: scenarios without a test that asserts their outcome go back to the BUILD agent
+    file: config/templates/jev/scenario_coverage.yaml
+    assert: # every condition must hold; skipped when include_diffs is false or no child repository changed
+      - "every_scenario_tested >= 0.6"
+      - "tests_assert_outcomes >= 0.6"
 
   change_risk: # J3: dispatcher, after BUILD passes, before queuing for merge
     mode: advisory

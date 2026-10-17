@@ -1,0 +1,17 @@
+# J7 - Scenario coverage. Asked by the dispatcher after BUILD's gates pass, before change_risk.
+# State (JSON): change, delta_specs{capability: text}, tasks, repos{path: {files, diffstat, diff}}.
+# Thresholds live in config/jev_policy.yaml. The gates already passed: this only asks
+# whether the tests prove the scenarios, so a "no" can add a repair, never pass a failure.
+questions:
+  every_scenario_tested:
+    type: noul
+    instructions: Does the diff in repos add or change an automated test for every scenario in delta_specs?
+    criteria:
+      "true": Each "#### Scenario:" in delta_specs has a test in the diff that sets up its GIVEN, performs its WHEN and checks its THEN.
+      "false": At least one scenario has no test in the diff that exercises it, or the diff changes no test file at all.
+  tests_assert_outcomes:
+    type: noul
+    instructions: Do the tests in the diff assert the observable results that the scenarios' THEN clauses name?
+    criteria:
+      "true": The tests check concrete results, such as a status code, a stored record, a returned value, an emitted event or a rendered element, matching each THEN.
+      "false": Some tests only run code without asserting, assert something always true, are skipped or pending, or check a result other than the scenario's THEN.

@@ -1,4 +1,4 @@
-# MEMORY.md
+# Memory
 
 Curated long-term memory for this workspace. The scheduled cycle is its only writer (`bin/run_cycle.sh`); workers record lessons in `openspec/changes/<change>/handoff.md` instead. Keep only durable, non-obvious facts: conventions, required flags, environment quirks and decisions with their reason. In-flight state, partial diffs and debug output do not belong here.
 

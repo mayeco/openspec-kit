@@ -27,6 +27,10 @@ class OpenSpecDispatcher
   DEFAULT_WAIT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'dispatch.wait_seconds')
   GATE_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.gate_seconds')
   AGENT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.agent_seconds')
+  CONFLICT_REBUILDS = OpenSpecSettings.get(O::ROOT, 'dispatch.conflict_rebuilds')
+  AGING_HOURS = OpenSpecSettings.get(O::ROOT, 'dispatch.aging_hours')
+  # When each backlog item was first seen, for aging items that carry no queued_at.
+  SEEN_FILE = File.join(O::LOG_DIR, 'backlog_seen.json')
   # The engine of each phase: its role in config/agents.yaml, unless an AGENT_ENGINE* variable overrides it.
   ENGINE_PLAN = OpenSpecAgents.engine(O::ROOT, 'plan')
   ENGINE_BUILD = OpenSpecAgents.engine(O::ROOT, 'build')
@@ -50,6 +54,10 @@ class OpenSpecDispatcher
     @building = {}            # change => capabilities held while building
     @held = {}                # change => capabilities that conflicted at claim time
     @results = {}             # change => :ready | :blocked | :busy
+    @slots = {}               # change => OPENSPEC_SLOT of its worker (1, 2, ...)
+    @items = []               # the last backlog read that parsed
+    @backlog_sig = nil        # mtime and size of that read
+    @reported = {}            # backlog problems already reported as events
     @last_fetch = Time.at(0)
   end
 
@@ -65,6 +73,12 @@ class OpenSpecDispatcher
     loop do
       reap!
       refresh_remote!(force: @threads.empty?)
+      # Read again on every pass: what a cycle queues while this dispatch runs starts
+      # as soon as a worker is free, instead of waiting for the next dispatch.
+      backlog = load_backlog
+      by_name = backlog.to_h { |i| [i['change_name'], i] }
+      # A change the merger sent back for a rebuild is started again in this dispatch.
+      @results.delete_if { |change, result| result == :ready && (O.read_json(O.rebuild_file(change)) || {})['requested'] }
       pending = backlog.reject { |item| @threads.key?(item['change_name']) || @results.key?(item['change_name']) }
       eligible = pending.select { |item| eligible?(item) }
 
@@ -115,20 +129,66 @@ class OpenSpecDispatcher
     @singleton.flush
   end
 
+  # The backlog in dispatch order. The file is parsed again only when it changed;
+  # one caught mid-write (not valid JSON yet) keeps the last list that parsed.
   def load_backlog
-    raw = O.read_json(@backlog_file)
-    O.emit('backlog.unreadable', file: @backlog_file) if raw.nil? && File.exist?(@backlog_file)
-    items = raw.is_a?(Hash) ? Array(raw['changes']) : Array(raw)
-    valid, invalid = items.partition { |i| i.is_a?(Hash) && i['change_name'].to_s.match?(O::CHANGE_NAME) }
-    invalid.each { |i| O.emit('backlog.invalid_name', item: i.to_s[0, 200]) }
-    sorted = valid.each_with_index.sort_by do |i, idx|
-      [PRIORITY.fetch(i['priority'], 2), -(Float(i['impact_score'], exception: false) || 0.0), idx]
+    sig = File.exist?(@backlog_file) ? [File.mtime(@backlog_file).to_f, File.size(@backlog_file)] : nil
+    if sig != @backlog_sig
+      raw = O.read_json(@backlog_file)
+      if raw.nil? && sig
+        report_once('backlog.unreadable', file: @backlog_file)
+      else
+        @backlog_sig = sig
+        items = raw.is_a?(Hash) ? Array(raw['changes']) : Array(raw)
+        valid, invalid = items.partition { |i| i.is_a?(Hash) && i['change_name'].to_s.match?(O::CHANGE_NAME) }
+        invalid.each { |i| report_once('backlog.invalid_name', item: i.to_s[0, 200]) }
+        valid.group_by { |i| i['change_name'] }.each do |name, dups|
+          report_once('backlog.duplicate_name', change: name, count: dups.size) if dups.size > 1
+        end
+        @items = valid
+      end
+    end
+    waited = waited_hours(@items)
+    sorted = @items.each_with_index.sort_by do |i, idx|
+      [priority_of(i, waited[i['change_name']]), -(Float(i['impact_score'], exception: false) || 0.0), idx]
     end.map(&:first)
     # Two entries with one name would start two threads for one change; keep the first.
-    sorted.group_by { |i| i['change_name'] }.each do |name, dups|
-      O.emit('backlog.duplicate_name', change: name, count: dups.size) if dups.size > 1
-    end
     sorted.uniq { |i| i['change_name'] }
+  end
+
+  def report_once(event, **fields)
+    key = [event, fields].hash
+    return if @reported[key]
+
+    @reported[key] = true
+    O.emit(event, **fields)
+  end
+
+  # Aging: every dispatch.aging_hours an item has waited orders it one priority
+  # higher, so a steady flow of higher items never starves the low ones. The
+  # priority written in the backlog does not change.
+  def priority_of(item, waited)
+    base = PRIORITY.fetch(item['priority'], 2)
+    return base unless AGING_HOURS.positive? && waited
+
+    [base - (waited / AGING_HOURS).floor, 0].max
+  end
+
+  # Hours each item has waited: since its queued_at, else since a dispatcher first
+  # saw it (log/backlog_seen.json, kept across dispatches).
+  def waited_hours(items)
+    @seen ||= O.read_json(SEEN_FILE) || {}
+    names = items.map { |i| i['change_name'] }
+    now = Time.now.utc
+    unless (names - @seen.keys).empty? && (@seen.keys - names).empty?
+      (names - @seen.keys).each { |name| @seen[name] = now.iso8601 }
+      @seen.select! { |name, _| names.include?(name) }
+      O.write_json_atomic(SEEN_FILE, @seen)
+    end
+    items.to_h do |i|
+      since = [i['queued_at'], @seen[i['change_name']]].filter_map { |t| Time.parse(t.to_s) rescue nil }.first
+      [i['change_name'], since && (now - since) / 3600.0]
+    end
   end
 
   def refresh_remote!(force: false)
@@ -190,10 +250,20 @@ class OpenSpecDispatcher
     end
   end
 
+  # Each running change gets the lowest free worker slot. Its agents and gates see it
+  # as OPENSPEC_SLOT, from which a repository's env_script derives a test database
+  # and a dev server port of its own.
   def start(item)
     change = item['change_name']
-    @threads[change] = Thread.new { process_change(item) }
+    slot = (1..).find { |n| !@slots.value?(n) }
+    @slots[change] = slot
+    @threads[change] = Thread.new do
+      Thread.current[:openspec_slot] = slot
+      process_change(item)
+    end
   end
+
+  def slot_env = { 'OPENSPEC_SLOT' => Thread.current[:openspec_slot].to_s }
 
   def reap!
     @threads.each do |change, thread|
@@ -202,6 +272,7 @@ class OpenSpecDispatcher
       result = thread.value
       @results[change] = result unless %i[held paused].include?(result)
       @state_mutex.synchronize { @building.delete(change) }
+      @slots.delete(change)
       O.emit('change.finished', change: change, result: result)
     end
     @threads.reject! { |_, thread| !thread.alive? }
@@ -213,6 +284,7 @@ class OpenSpecDispatcher
     change = item['change_name']
     lease = O::Lease.acquire(change, "dispatcher-#{Process.pid}") or return :busy
     @state_mutex.synchronize { @leases[change] = lease }
+    take_rebuild_request(change)
     wt = File.join(O::WORKTREE_BASE, "worker-#{change}")
     branch = "feat/spec-#{change}"
     log = File.join(O::WORKER_LOG_DIR, "#{change}.log")
@@ -223,8 +295,8 @@ class OpenSpecDispatcher
     caps = capabilities(wt, change) + Array(item['locks']).map { |l| "lock:#{l}" }
     return :held unless claim_capabilities(change, caps)
 
-    refresh!(item, wt, branch, log)
-    build!(item, wt, branch, log)
+    rebuild = refresh!(item, wt, branch, log)
+    build!(item, wt, branch, log, rebuild: rebuild)
     assessment = assess_risk!(item, wt, change, caps, log)
     enqueue!(change, wt, branch, caps, assessment)
     :ready
@@ -386,9 +458,9 @@ class OpenSpecDispatcher
   end
 
   # Child-repo changes since the fork point: files, diffstat and (by policy) the diff.
-  def risk_state(item, wt, change, caps)
+  def child_changes(wt)
     fork = O.git!(['merge-base', 'HEAD', "#{O::REMOTE}/#{O::BASE_BRANCH}"], chdir: wt)
-    repos = O.child_paths(wt).each_with_object({}) do |path, acc|
+    O.child_paths(wt).each_with_object({}) do |path, acc|
       from = O.git(['rev-parse', "#{fork}:#{path}"], chdir: wt).out.strip
       to = O.git!(['rev-parse', "HEAD:#{path}"], chdir: wt)
       next if from == to
@@ -400,12 +472,24 @@ class OpenSpecDispatcher
       }
       acc[path]['diff'] = O.git(['diff', from, to], chdir: child).out if O::Jev.policy.fetch('include_diffs', true)
     end
+  end
+
+  def risk_state(item, wt, change, caps)
     {
       'change' => change,
       'goal' => item['description'].to_s,
       'proposal' => read_or_empty(File.join(wt, 'openspec', 'changes', change, 'proposal.md')),
       'capabilities' => caps,
-      'repos' => repos
+      'repos' => child_changes(wt)
+    }
+  end
+
+  def coverage_state(wt, change)
+    {
+      'change' => change,
+      'delta_specs' => delta_specs(wt, change),
+      'tasks' => read_or_empty(File.join(wt, 'openspec', 'changes', change, 'tasks.md')),
+      'repos' => child_changes(wt)
     }
   end
 
@@ -416,7 +500,8 @@ class OpenSpecDispatcher
 
   # Rebase the plan onto the latest base (another change may have just updated
   # the same canonical spec), re-validate, and put every child repo on the
-  # feature branch rooted at the gitlink recorded by the refreshed base.
+  # feature branch rooted at the gitlink recorded by the refreshed base. Returns
+  # the feedback for BUILD when a child branch had to be rebuilt, else nil.
   def refresh!(item, wt, branch, log)
     change = item['change_name']
     base_ref = "#{O::REMOTE}/#{O::BASE_BRANCH}"
@@ -443,6 +528,7 @@ class OpenSpecDispatcher
     end
     plan!(item, wt, log) # strict validation catches MODIFIED blocks made stale by the rebase
 
+    rebuilt = []
     children.each do |path|
       child = File.join(wt, path)
       target = O.git!(['rev-parse', "HEAD:#{path}"], chdir: wt)
@@ -455,19 +541,65 @@ class OpenSpecDispatcher
         next if res.ok?
 
         O.git(%w[rebase --abort], chdir: child)
-        raise O::Blocked.new('rebase_conflict', "#{path}: #{res.out}")
+        rebuilt << rebuild_child!(change, path, child, branch, target, res.out, log)
       else
         O.git!(['switch', '--quiet', '--detach', target], chdir: child, log: log)
         O.git!(['switch', '--quiet', '-c', branch], chdir: child, log: log)
       end
     end
+    return nil if rebuilt.empty?
+
+    reopen_tasks!(wt, change, log)
+    rebuilt.join("\n")
+  end
+
+  # A child branch that no longer rebases onto the refreshed base (a change
+  # integrated meanwhile edited the same lines) is rebuilt instead of waiting for a
+  # human, up to dispatch.conflict_rebuilds times: its commits stay on
+  # <branch>-conflict-<n>, the branch restarts from the new base, and BUILD
+  # implements the change again with the conflict as feedback. Past the limit it
+  # is quarantined as rebase_conflict.
+  def rebuild_child!(change, path, child, branch, target, conflict, log)
+    record = O.read_json(O.rebuild_file(change)) || {}
+    count = record['rebuilds'].to_i
+    raise O::Blocked.new('rebase_conflict', "#{path}: #{conflict}") if count >= CONFLICT_REBUILDS
+
+    kept = "#{branch}-conflict-#{count + 1}"
+    files = conflict.scan(/Merge conflict in (\S+)/).flatten.uniq
+    O.git!(['branch', '-f', kept, branch], chdir: child, log: log)
+    O.git!(['switch', '--quiet', '--detach', target], chdir: child, log: log)
+    O.git!(['branch', '-f', branch, target], chdir: child, log: log)
+    O.git!(['switch', '--quiet', branch], chdir: child, log: log)
+    O.write_json_atomic(O.rebuild_file(change), record.merge(
+      'rebuilds' => count + 1, 'requested' => false,
+      'last' => { 'repo' => path, 'files' => files, 'kept' => kept, 'at' => Time.now.utc.iso8601 }
+    ))
+    O.emit('change.rebuild', change: change, repo: path, kept: kept, files: files.join(','))
+    "#{path}: the previous implementation, kept on branch #{kept} of that repository, conflicted with work " \
+      "integrated since#{files.empty? ? '' : " in #{files.join(', ')}"}. Implement the tasks again on the current " \
+      "code: reuse what still applies (git -C #{path} diff #{target} #{kept}) and keep what the integrated work changed."
+  end
+
+  # The tasks of a rebuilt change are open again, so BUILD implements them instead of finding them done.
+  def reopen_tasks!(wt, change, log)
+    tasks = File.join(wt, 'openspec', 'changes', change, 'tasks.md')
+    File.write(tasks, File.read(tasks).gsub(/^(\s*- )\[[xX]\]/, '\1[ ]'))
+    commit_umbrella!(wt, "docs(openspec): reopen #{change} for a rebuild on the new base", ["openspec/changes/#{change}"], log)
+  end
+
+  # The merger asked for this rebuild; starting the change consumes the request.
+  def take_rebuild_request(change)
+    record = O.read_json(O.rebuild_file(change))
+    return unless record&.fetch('requested', false)
+
+    O.write_json_atomic(O.rebuild_file(change), record.merge('requested' => false))
   end
 
   # BUILD: implement, commit inside child repos, verify; repair on failure.
   # When resuming an already-built change (for example after an operator
   # approves a risk_review), verify the refreshed tree first so the agent never
   # rewrites a human-approved diff unless verification now fails.
-  def build!(item, wt, branch, log)
+  def build!(item, wt, branch, log, rebuild: nil)
     change = item['change_name']
     attempts = 0
     failure = nil
@@ -487,7 +619,9 @@ class OpenSpecDispatcher
       phase = attempts.zero? ? 'apply' : "repair-#{attempts}"
       # Any new agent edit invalidates a prior human risk_review approval.
       FileUtils.rm_f(File.join(O::APPROVED_DIR, change))
-      agent!(change, phase, apply_prompt(item, branch, failure && failure[:details]), wt, log, engine: @engine_build)
+      asked = failure
+      agent!(change, phase, apply_prompt(item, branch, failure && failure[:details], rebuild: attempts.zero? ? rebuild : nil), wt, log,
+             engine: @engine_build)
       commit_children!(wt, change, log)
       failure = verify_build(wt, change, branch, log)
       failure, reran = triage_failure(change, wt, branch, failure, reran, log) if failure && failure[:reason] == 'gate_failure'
@@ -495,6 +629,8 @@ class OpenSpecDispatcher
 
       attempts += 1
       raise O::Blocked.new(failure[:reason], failure[:details]) if attempts > @repair_attempts
+
+      check_progress!(change, wt, asked, failure, log) if asked
     end
     commit_umbrella!(wt, "feat(spec): implement #{change}", ["openspec/changes/#{change}", *O.child_paths(wt)], log)
   end
@@ -522,6 +658,40 @@ class OpenSpecDispatcher
       end
     end
     [failure.merge(details: "#{hint}\n#{failure[:details]}"), reran]
+  end
+
+  # J2, between repair rounds: before spending another BUILD repair, which can
+  # take an hour, Jev compares the gate output the agent was asked to fix with
+  # the output after its repair. In enforce mode a change that is not
+  # converging is quarantined as repair_stalled; anything short of a confident
+  # "no" spends the next round as before.
+  def check_progress!(change, wt, asked, failure, log)
+    return unless asked[:reason] == 'gate_failure' && failure[:reason] == 'gate_failure'
+
+    state = { 'change' => change, 'previous_gate_output' => asked[:details], 'gate_output' => failure[:details],
+              'delta_specs' => delta_specs(wt, change) }
+    verdict = O::Jev.ask('repair_progress', state, cache_dir: jev_dir(change), log: log, change: change)
+    return unless verdict.blocking?
+
+    O.emit('jev.route', change: change, action: 'repair_stalled')
+    raise O::Blocked.new('repair_stalled', "#{O::Jev.feedback(verdict)}\n#{failure[:details]}")
+  end
+
+  # J7: once the gates pass, Jev checks that the change's tests assert every
+  # scenario of its delta specs. In enforce mode the uncovered scenarios go back
+  # to the BUILD agent as repair feedback, as J1 does for a plan, and after the
+  # last repair the change is quarantined as scenario_coverage. It only runs on
+  # code that passed its gates, so it can add a repair but never pass a failure.
+  # It needs the diff: with include_diffs false, or no child repository
+  # changed, it is skipped.
+  def coverage_failure(wt, change, log)
+    return nil unless O::Jev.policy.fetch('include_diffs', true)
+
+    state = coverage_state(wt, change)
+    return nil if state['repos'].empty?
+
+    verdict = O::Jev.ask('scenario_coverage', state, cache_dir: jev_dir(change), log: log, change: change)
+    verdict.blocking? ? { reason: 'scenario_coverage', details: O::Jev.feedback(verdict) } : nil
   end
 
   # J3: Jev rates the finished change. In enforce mode a matching block_when
@@ -574,8 +744,10 @@ class OpenSpecDispatcher
       return { reason: 'incomplete_tasks', details: "Tasks complete: #{entry&.values_at('completedTasks', 'totalTasks')&.join('/') || 'unknown'}" }
     end
 
-    gates = O.run(['bash', 'bin/run_gates.sh', '--base', base], chdir: wt, log: log, timeout: GATE_TIMEOUT)
-    gates.ok? ? nil : { reason: 'gate_failure', details: gates.tail(120) }
+    gates = O.run(['bash', 'bin/run_gates.sh', '--base', base], chdir: wt, log: log, env: slot_env, timeout: GATE_TIMEOUT)
+    return { reason: 'gate_failure', details: gates.tail(120) } unless gates.ok?
+
+    coverage_failure(wt, change, log)
   end
 
   def commit_children!(wt, change, log)
@@ -616,7 +788,7 @@ class OpenSpecDispatcher
     started = Time.now
     cmd = ['bash', O::AGENT_EXEC, wt, prompt_file]
     cmd << engine if engine
-    res = O.run(cmd, chdir: wt, log: log, env: AGENT_ENV, timeout: AGENT_TIMEOUT + 120)
+    res = O.run(cmd, chdir: wt, log: log, env: AGENT_ENV.merge(slot_env), timeout: AGENT_TIMEOUT + 120)
     O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: engine || 'default')
     raise O::Blocked.new('engine_unavailable', res.out) if res.code == 127
 
@@ -672,7 +844,7 @@ class OpenSpecDispatcher
     PROMPT
   end
 
-  def apply_prompt(item, branch, feedback)
+  def apply_prompt(item, branch, feedback, rebuild: nil)
     change = item['change_name']
     <<~PROMPT
       You are the IMPLEMENTATION agent for OpenSpec change "#{change}" in this git worktree.
@@ -694,6 +866,7 @@ class OpenSpecDispatcher
       Hard rules: never edit openspec/specs/; never push, reset, rebase or switch branches;
       never edit repos/*/repo.config.yaml or CI configuration; only modify repos/ and openspec/changes/#{change}/.
       #{feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''}
+      #{rebuild ? "\nThis change is being built again on the current base branch:\n#{rebuild}" : ''}
     PROMPT
   end
 end

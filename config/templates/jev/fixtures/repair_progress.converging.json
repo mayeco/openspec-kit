@@ -1,0 +1,8 @@
+{
+  "change": "add-invoice-export",
+  "previous_gate_output": "---- [gate] backend:test: bundle exec rspec\nFailures:\n  1) Invoice export exports the invoices of a period\n     NameError: uninitialized constant InvoiceCsv\n  2) Invoice export rejects an invalid period\n     NoMethodError: undefined method `parse' for class Period\n  3) Invoice export sets the file name\n     NameError: uninitialized constant InvoiceCsv\n3 examples, 3 failures\n---- [FAIL] backend:test (exit 1)\n",
+  "gate_output": "---- [gate] backend:test: bundle exec rspec\nFailures:\n  1) Invoice export sets the file name\n     expected \"invoices-2026-03.csv\", got \"export.csv\"\n3 examples, 1 failure\n---- [FAIL] backend:test (exit 1)\n",
+  "delta_specs": {
+    "invoicing": "## ADDED Requirements\n\n### Requirement: Invoice Export\nThe system SHALL export the invoices of a period as CSV.\n\n#### Scenario: Export a period\n- **GIVEN** two invoices dated in March 2026\n- **WHEN** an accountant requests GET /invoices/export?period=2026-03\n- **THEN** the response status is 200, its content type is text/csv and it has a header row and two invoice rows\n\n#### Scenario: Reject an invalid period\n- **WHEN** an accountant requests GET /invoices/export?period=2026-13\n- **THEN** the response status is 422 and the body names the period parameter\n"
+  }
+}

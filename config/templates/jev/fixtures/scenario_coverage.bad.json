@@ -1,0 +1,17 @@
+{
+  "change": "add-invoice-export",
+  "delta_specs": {
+    "invoicing": "## ADDED Requirements\n\n### Requirement: Invoice Export\nThe system SHALL export the invoices of a period as CSV.\n\n#### Scenario: Export a period\n- **GIVEN** two invoices dated in March 2026\n- **WHEN** an accountant requests GET /invoices/export?period=2026-03\n- **THEN** the response status is 200, its content type is text/csv and it has a header row and two invoice rows\n\n#### Scenario: Reject an invalid period\n- **WHEN** an accountant requests GET /invoices/export?period=2026-13\n- **THEN** the response status is 422 and the body names the period parameter\n"
+  },
+  "tasks": "## 1. Export\n- [x] 1.1 Add the export endpoint\n- [x] 1.2 Test both scenarios (verify: bundle exec rspec spec/requests/invoice_export_spec.rb)\n",
+  "repos": {
+    "repos/backend": {
+      "files": [
+        "app/controllers/invoice_exports_controller.rb",
+        "spec/requests/invoice_export_spec.rb"
+      ],
+      "diffstat": " 2 files changed\n",
+      "diff": "diff --git a/app/controllers/invoice_exports_controller.rb b/app/controllers/invoice_exports_controller.rb\n+class InvoiceExportsController < ApplicationController\n+  def show\n+    period = Period.parse(params[:period]) or return render(json: { error: \"period is invalid\" }, status: :unprocessable_entity)\n+    send_data InvoiceCsv.new(Invoice.in_period(period)).to_s, type: \"text/csv\"\n+  end\n+end\ndiff --git a/spec/requests/invoice_export_spec.rb b/spec/requests/invoice_export_spec.rb\n+RSpec.describe \"Invoice export\" do\n+  it \"exports invoices\" do\n+    get \"/invoices/export\", params: { period: \"2026-03\" }\n+    expect(true).to be(true)\n+  end\n+end\n"
+    }
+  }
+}

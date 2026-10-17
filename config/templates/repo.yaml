@@ -1,25 +1,41 @@
 # repos/<repo-name>/repo.config.yaml
 name: "{{REPO_NAME}}"            # e.g. "backend", "frontend", "infra"
-stack: "{{TECH_STACK}}"          # e.g. "python-fastapi", "nextjs-typescript", "go", "rails"
+stack: "{{TECH_STACK}}"          # e.g. "python-fastapi", "nextjs-typescript", "go-web-gin", "go-cli-cobra", "rails"
 base_branch: "{{BASE_BRANCH}}"   # the branch the merger pushes to, e.g. "main"
+# web: an HTTP application QA opens in a browser. cli: a terminal program QA runs with
+# arguments and checks its output, exit code and files; a change touching only cli
+# repositories is not queued for the visual QA session.
+kind: "{{APP_KIND}}"             # web | cli
 
 # Optional: a script of this repository, sourced from its root before each of its commands
 # (the gates below, the dev command, and `bash bin/repo_exec.sh <repo> <command>`). It
-# activates the toolchain the repository pins (Ruby, Node, Python versions, gemsets) and
+# activates the toolchain the repository pins (Ruby, Node, Python, Go versions, gemsets) and
 # exports what its commands need. Start from config/templates/repo_env.sh of the umbrella.
 # Agents may not change it: the merger blocks a change that does. Empty: plain shell.
 env_script: ""                  # e.g. "script/env.sh"
 
+# How to run it: a web server (dev_command, port, health_endpoint), or for a cli, the
+# command that runs the program; QA appends its arguments. A cli leaves port and health empty.
 service:
-  dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev"; run it with bash bin/repo_exec.sh <repo> <dev_command>
+  dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev", "go run ./cmd/server", "go run ./cmd/mytool"
   port: "{{DEV_PORT}}"                   # quoted: an unquoted {{...}} is invalid YAML
   health_endpoint: "{{HEALTH_ENDPOINT}}" # e.g. "http://localhost:3000/up"
 
-# Run in this order when this repo has changes: lint, typecheck, test, build, then any extra keys.
+# Run in this order when this repo has changes: setup, lint, typecheck, test, build, then any
+# extra keys. They run after every BUILD and again at merge, so keep them fast: each command
+# sees OPENSPEC_CHANGED_FILES (this repo's files the change touched, one per line) to run only
+# the related tests, e.g. "bundle exec rspec $(script/related_specs)". Several changes build
+# at once: each one sees OPENSPEC_SLOT, from which env_script derives its own test database.
 # Empty values and un-instantiated {{...}} placeholders are skipped with a warning.
 gates:
+  setup: ""                              # e.g. "RAILS_ENV=test bin/rails db:prepare": this slot's test database
   lint: "{{LINT_COMMAND}}"               # e.g. "pnpm lint", "ruff check .", "golangci-lint run"
   typecheck: "{{TYPECHECK_COMMAND}}"     # e.g. "pnpm tsc --noEmit", "mypy .", "cargo check"
   test: "{{TEST_COMMAND}}"               # e.g. "pnpm test", "pytest", "go test ./..."
   build: "{{BUILD_COMMAND}}"             # e.g. "pnpm build", "cargo build"
   secrets: "gitleaks detect --no-banner --redact --source ."   # recommended extra gate: committed secrets
+
+# The cycle's regression sweep (bash bin/run_gates.sh --all --regression) runs these once per
+# cycle instead of the gates, after gates.setup: usually the full suite. Empty: the gates.
+regression:
+  test: "{{REGRESSION_COMMAND}}"         # e.g. "bundle exec rspec", "pnpm test", "pytest"

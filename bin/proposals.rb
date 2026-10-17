@@ -122,7 +122,8 @@ module Proposals
       end
       if item['status'] == 'approved'
         unless backlog.any? { |b| b['change_name'] == item['change_name'] }
-          backlog << item.reject { |k, _| OWN_FIELDS.include?(k) }
+          # queued_at lets the dispatcher age the item (dispatch.aging_hours of config/pipeline.yaml).
+          backlog << item.reject { |k, _| OWN_FIELDS.include?(k) }.merge('queued_at' => now)
         end
         item['status'] = 'queued'
         item['queued_at'] = now

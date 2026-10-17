@@ -9,8 +9,8 @@
 # `bash bin/repo_exec.sh repos/<name> <command>`.
 #
 # Why: schedulers, agents and gates run non-interactive shells, where the cd hooks
-# of RVM, rbenv, chruby, asdf, mise, nvm or pyenv never run, so `bundle exec`,
-# `pnpm` or `pytest` would find the wrong version or none.
+# of RVM, rbenv, chruby, asdf, mise, nvm, pyenv or goenv never run, so `bundle exec`,
+# `pnpm`, `pytest` or `go` would find the wrong version or none.
 #
 # Rules: it is sourced, not executed. It must not exit, must not fail the caller,
 # must not print secrets, and should stay quiet. Agents may not change it: the
@@ -56,6 +56,15 @@ openspec_repo_env() {
     eval "$(pyenv init - bash 2>/dev/null)" || true
   fi
 
+  # Go: .go-version through goenv, installed in ~/.goenv or on PATH. The go command
+  # itself reads go.mod's go and toolchain lines.
+  if [ -f .go-version ]; then
+    [ -d "${GOENV_ROOT:-$HOME/.goenv}/bin" ] && export GOENV_ROOT="${GOENV_ROOT:-$HOME/.goenv}" && PATH="$GOENV_ROOT/bin:$PATH"
+    if command -v goenv >/dev/null 2>&1; then
+      eval "$(goenv init - bash 2>/dev/null)" || true
+    fi
+  fi
+
   # mise and asdf read .tool-versions and .mise.toml for every language at once.
   if command -v mise >/dev/null 2>&1; then
     eval "$(mise env -s bash 2>/dev/null)" || true
@@ -63,6 +72,21 @@ openspec_repo_env() {
     # shellcheck disable=SC1091
     source "$HOME/.asdf/asdf.sh" || true
   fi
+
+  # Parallel changes: the dispatcher builds several at once, each in its own worktree,
+  # and the merger tests in another. Each gets OPENSPEC_SLOT (1, 2, ... for the
+  # dispatcher's workers, 99 for the merger; unset in the main checkout) so that two of
+  # them never share a test database or a dev server port. Rails reads TEST_ENV_NUMBER
+  # in config/database.yml (database: app_test<%= ENV['TEST_ENV_NUMBER'] %>), and a
+  # `setup` gate such as "RAILS_ENV=test bin/rails db:prepare" creates that database.
+  # Adapt the names to the stack: DATABASE_URL, PGDATABASE, a pytest --db suffix, ...
+  case "${OPENSPEC_SLOT:-}" in
+    ''|0|*[!0-9]*) ;;
+    *)
+      export TEST_ENV_NUMBER="$OPENSPEC_SLOT"
+      export PORT="$((3000 + OPENSPEC_SLOT * 10))"
+      ;;
+  esac
 
   [ "$had_u" -eq 1 ] && set -u
   return 0
