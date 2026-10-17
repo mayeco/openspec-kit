@@ -82,15 +82,15 @@ if [ "${JEV_DISABLED:-0}" = 1 ]; then
   echo "  jev: disabled (JEV_DISABLED=1)"
 elif ! command -v jev >/dev/null 2>&1; then
   echo "  jev: not installed (brew install shaharia-lab/tap/jev)"; JUDGE=missing
-elif [ ! -f templates/jev/canary.yaml ]; then
-  echo "  jev: templates/jev/ not installed; skipped"
+elif [ ! -f config/templates/jev/canary.yaml ]; then
+  echo "  jev: config/templates/jev/ not installed; skipped"
 else
   JUDGE=ok
   JEV_MODEL="${JEV_MODEL:-$(ruby -ryaml -e 'puts((YAML.safe_load_file(ARGV[0]) || {})["model"] || "jev-latest")' config/jev_policy.yaml 2>/dev/null || echo jev-latest)}"
   echo "  jev: CLI $(jev version -o json 2>/dev/null | ruby -rjson -e 'puts JSON.parse(STDIN.read)["version"]' 2>/dev/null), model ${JEV_MODEL}"
 
   # 1. Offline and free: every question file must pass strict validation.
-  for f in templates/jev/*.yaml; do
+  for f in config/templates/jev/*.yaml; do
     if ! jev validate -f "$f" --strict -o json --quiet >/dev/null 2>&1; then
       echo "  jev: INVALID question file $f (see: jev validate -f $f --strict)"; JUDGE=invalid
     fi
@@ -98,7 +98,7 @@ else
 
   # 2. Live canary: an obvious yes and an obvious no in one call (about $0.00002).
   if [ "$JUDGE" = ok ]; then
-    OUT="$(bounded jev eval -f templates/jev/canary.yaml --model "$JEV_MODEL" -o json --quiet --no-input \
+    OUT="$(bounded jev eval -f config/templates/jev/canary.yaml --model "$JEV_MODEL" -o json --quiet --no-input \
              --assert "all_gates_passed >= 0.8" --assert "reports_failure <= 0.2" 2>&1)"
     RC=$?
     SUMMARY="$(printf '%s' "$OUT" | ruby -rjson -e '

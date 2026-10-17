@@ -17,7 +17,7 @@
 #
 # review applies `proposals.approval` of config/cycle.yaml to each proposal still
 # "proposed":
-#   jev    Jev answers templates/jev/proposal_review.yaml (gate proposal_review of
+#   jev    Jev answers config/templates/jev/proposal_review.yaml (gate proposal_review of
 #          config/jev_policy.yaml). In enforce mode a passing proposal is approved;
 #          otherwise, or with Jev off or unavailable, the answers are recorded and it
 #          waits for a human. Jev is asked once per proposal: delete its "review"

@@ -623,10 +623,10 @@ class OpenSpecDispatcher
     raise O::Blocked.new('spec_ambiguity', File.read(flag)) if File.exist?(flag)
   end
 
-  # The framework's authoring rules travel with the kit (templates/authoring_rules.md),
+  # The framework's authoring rules travel with the kit (config/templates/authoring_rules.md),
   # so openspec/config.yaml stays the project's own, as `openspec init` created it.
   def authoring_rules
-    @authoring_rules ||= read_or_empty(File.join(O::ROOT, 'templates', 'authoring_rules.md'))
+    @authoring_rules ||= read_or_empty(File.join(O::ROOT, 'config', 'templates', 'authoring_rules.md'))
   end
 
   # J4: agents may ask Jev their own yes/no questions while they work.

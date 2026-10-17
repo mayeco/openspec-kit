@@ -7,7 +7,7 @@
 #
 # Runs the command from the repository's root after sourcing the script that
 # `env_script` in its repo.config.yaml names (the repository's own file, from
-# config/repo_env.template.sh): it activates the toolchain the repository pins
+# config/templates/repo_env.sh): it activates the toolchain the repository pins
 # and exports what its commands need. Without env_script the command runs in the
 # plain shell. A configured script that is missing fails with exit 2.
 # The gates (bin/run_gates.sh) run through it; agents and QA skills should too:

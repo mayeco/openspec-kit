@@ -1,15 +1,15 @@
 {
   "name": "openspec-kit",
-  "version": "2.4.0",
-  "source_commit": "8a4aa3ff70520b52c23f28752a76cb944e350e4d",
+  "version": "2.5.0",
+  "source_commit": "7154ccccb1242850c45b5975e28fcd4d77e6e9c4",
   "source_dirty": false,
-  "built_at": "2026-10-16T23:46:35Z",
+  "built_at": "2026-10-17T00:41:43Z",
   "toolchain": {
     "openspec": "1.14.1",
     "git": "2.56.0",
     "ruby": "4.0.7",
     "jev": "0.2.0",
-    "jev_model": "jev-1.13.0"
+    "jev_model": "jev-1.14.0"
   },
   "files": {
     "MEMORY.md": {
@@ -18,7 +18,7 @@
     },
     "README.md": {
       "class": "seed",
-      "sha256": "0d4a0bdb2360bf9d18e0f6523345f9b78982f169ba9f5ac1a3f121ecea999765"
+      "sha256": "00e85d9e6e7999d7a16a60f0cdb269a47c3236b88633be0a1c1ea9ebc837364e"
     },
     "ROADMAP.md": {
       "class": "seed",
@@ -30,7 +30,7 @@
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "80281416cf6bc4aba2c28b21ee7bb96c03bd3e3270b6c6ef3bd69d85069d7115"
+      "sha256": "54f34f767f923f51b788bec2ca5cc7f1925f43064d176e661d396b1210cce4da"
     },
     "bin/completed_since.sh": {
       "class": "kit",
@@ -38,7 +38,7 @@
     },
     "bin/cycle_prompt.rb": {
       "class": "kit",
-      "sha256": "25b3a1b28bde76e7d1595c9a0184d83236182648fc2cbe36361c6663acd6af6c"
+      "sha256": "a57156865a1f4738cf7386a340d1a057442cc69cbfed3a197507d668ea88ed4e"
     },
     "bin/cycle_status.sh": {
       "class": "kit",
@@ -46,15 +46,15 @@
     },
     "bin/install.sh": {
       "class": "kit",
-      "sha256": "9d45ca7bc787c1c4e56e8db544984cd03eafd867bc30f6bc15acb601a1f056be"
+      "sha256": "0e4366a9284b3114de6faf8b2fce3112778103574086b74763ee2de7de4ad32c"
     },
     "bin/jev_contract.sh": {
       "class": "kit",
-      "sha256": "00950fd623f01bde98f03b368fd681e0d0ddb803e25865fa8dd8724514191fe2"
+      "sha256": "55fc6d7e3d39807bb398c9f52bf5bcd2965a05339b6899294c2628389b7056f9"
     },
     "bin/lib/agents.rb": {
       "class": "kit",
-      "sha256": "9c9609ad0f32d22c97e0c80d5457169ed0c68281df348e0f2f7d387d8e3bf45f"
+      "sha256": "55afc250b16352d23f2e899ff4d0c22e141163b1a958796c7c6a51a251c8b372"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
@@ -66,11 +66,11 @@
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "5691743bd989efa76d3f22385e0d23b7440ab533624c610fdb415b8d3fc53a74"
+      "sha256": "b8e977cd24d28f4dbfc1b7b1fbe341592997a57af572287566897911deacbf5e"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "a21d59862ab441a084aa432f8325eedc7fdc253b921732eb5037653c25d267c8"
+      "sha256": "16573824db803d71c16609e0d7a0cbd5af0fc138666adaa87b9cd7c8165d9635"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
@@ -78,15 +78,15 @@
     },
     "bin/proposals.rb": {
       "class": "kit",
-      "sha256": "feae6b4a0f04762b872641f435b63b5da2a9189454a78fd71077b4a87831bb1c"
+      "sha256": "1fcad0b904e107743a9ef118bae26891c753fbaa03a2a2ca62a0766ffcf6129d"
     },
     "bin/repo_exec.sh": {
       "class": "kit",
-      "sha256": "c692eb16b65e8e5f7c969dfc09d0f215d442b0441f12732a3ca9df1d0950367b"
+      "sha256": "abeb7fc6d3481f9e1d27a7bc3cbeba74fe4f84fad412876fb160e5c7ab5eeac5"
     },
     "bin/run_cycle.sh": {
       "class": "kit",
-      "sha256": "07562dab79d13419042aef79e57f5b982995ff65d71a38eec5f6b0ed66a2d81f"
+      "sha256": "0b4d8069687ca1b5d54879683fd87985cf58f5784603d90e601eea7850f81189"
     },
     "bin/run_gates.sh": {
       "class": "kit",
@@ -122,19 +122,95 @@
     },
     "config/jev_policy.yaml": {
       "class": "seed",
-      "sha256": "1b4b8398806a4b887c4c3d7337b5cbab02b4de54963b6c2d24db928bd0678a5f"
+      "sha256": "730d802524c6ff94092142515c74daf46f1b351d61bc021bc2384b436fb2954b"
     },
-    "config/repo.template.yaml": {
+    "config/templates/authoring_rules.md": {
       "class": "kit",
-      "sha256": "d08798bb9d3a6444051ebfb590873d40b2636a991180b0e4a5ee0f9cfd9081a6"
+      "sha256": "ee73507b8e7d63ef9cec3852c149f67139b57dd42e5980c6f38c6bee8da0fd7a"
     },
-    "config/repo_env.template.sh": {
+    "config/templates/cycle_prompt.md": {
+      "class": "kit",
+      "sha256": "b7d90e1b3653872da356907b3ffd569fd14bf7040bf1ad907f4e39521b724278"
+    },
+    "config/templates/cycle_state.json": {
+      "class": "kit",
+      "sha256": "84e1479f9ba96c1b7fb0b3c17ac9cd060db7a9ee703891026e2ca221c0c055fc"
+    },
+    "config/templates/jev/canary.yaml": {
+      "class": "kit",
+      "sha256": "f4e28473922ec2cca990646a07309929472467c3466ee45b50f1d126c24b792e"
+    },
+    "config/templates/jev/change_risk.yaml": {
+      "class": "kit",
+      "sha256": "c30e30952a4f13c1b966dd9528fa3cad6c2770921e6fdc8a0365bffd60d5baa4"
+    },
+    "config/templates/jev/failure_triage.yaml": {
+      "class": "kit",
+      "sha256": "422fd41537575fe5fbbe405f4d243bf827672a5b9576a7d1729e7a78563206e8"
+    },
+    "config/templates/jev/fixtures/README.md": {
+      "class": "kit",
+      "sha256": "e47443fe30ef5ba180d8335a8fd6ddc19f8a78e82fbed01b44555ab3f0741546"
+    },
+    "config/templates/jev/fixtures/canary.failing.log": {
+      "class": "kit",
+      "sha256": "b84c000142c28c1990a430f9adabb0e339fd074e86339b3b41e0e52f4d29501e"
+    },
+    "config/templates/jev/fixtures/change_risk.high.json": {
+      "class": "kit",
+      "sha256": "f178f2a793bd2a2068e415c2504dc51e53474018d59117a3b25ad1d2a361eeee"
+    },
+    "config/templates/jev/fixtures/change_risk.low.json": {
+      "class": "kit",
+      "sha256": "9c6565dfea2d5f57249c18199be805955b0c29fbd92d156d6e51c310f330cf78"
+    },
+    "config/templates/jev/fixtures/failure_triage.defect.json": {
+      "class": "kit",
+      "sha256": "2e0cde267733da20f263c9fa56d45de2844d755296224be77b6468bb01f2ec14"
+    },
+    "config/templates/jev/fixtures/failure_triage.flaky.json": {
+      "class": "kit",
+      "sha256": "45d1e8b6ee90f8abedd2b68b38739af1e7d7edc5207992c48e64b06d59fa4492"
+    },
+    "config/templates/jev/fixtures/plan_review.bad.json": {
+      "class": "kit",
+      "sha256": "e5f5a2fa06be660c0172cc43d4c390662fac370cb1313c742c3e27ea2b3c84af"
+    },
+    "config/templates/jev/fixtures/plan_review.good.json": {
+      "class": "kit",
+      "sha256": "96cf49937c492251ac5e7f316e23f527be5a48a70d96cf48309ed3b3c9558ae3"
+    },
+    "config/templates/jev/fixtures/proposal_review.bad.json": {
+      "class": "kit",
+      "sha256": "7b82d5ae667ab22acc641ee98499ad5963cf74b4c76d143a16cbb72be395c0e4"
+    },
+    "config/templates/jev/fixtures/proposal_review.good.json": {
+      "class": "kit",
+      "sha256": "141a994c0c6a18d7e3594f95923c17f23f8448fd68eb33bef9fea9f46921d49e"
+    },
+    "config/templates/jev/plan_review.yaml": {
+      "class": "kit",
+      "sha256": "a36c552551df57dae51a96c4cf48f32acd083f195e1d6df36e1662893bc715b4"
+    },
+    "config/templates/jev/proposal_review.yaml": {
+      "class": "kit",
+      "sha256": "0c3a2abb8467ff052a260d213b308c2c9a386d1a5d420240e4d0baffa6b444c1"
+    },
+    "config/templates/jev/task_priority.yaml": {
+      "class": "kit",
+      "sha256": "6d0839da60e3e9c792dff6fbaceaa9178752544cd5c0f08ba0842244422922af"
+    },
+    "config/templates/repo.yaml": {
+      "class": "kit",
+      "sha256": "aca2aba7f59a0b6995c51d9714be91b0991ea75583c8e5deda034a22d8d7dae8"
+    },
+    "config/templates/repo_env.sh": {
       "class": "kit",
       "sha256": "d1e212155a4bce8dc35a91612b16a77ec61d0dbb0948e9a21c13fc598a525451"
     },
     "skills/openspec-kit-cycle/SKILL.md": {
       "class": "skill",
-      "sha256": "b0360be83f4ff83a957ac0b688493329eb556ebc9c049ebf02a38d4f563c3934"
+      "sha256": "f4f94d5de70691fa24362066f13867d73038f86acbda7db5e50727d394e662f0"
     },
     "skills/openspec-kit-cycle/references/report.template.md": {
       "class": "skill",
@@ -146,7 +222,7 @@
     },
     "skills/openspec-kit-qa/SKILL.md": {
       "class": "skill",
-      "sha256": "5fac0e2948c517fbfa8a8500ac2956f2e2583ee11bd691f85cb543f16752cca5"
+      "sha256": "6a3eb0a325e0817853b1fe2200d3d24d94fefe2081c79b7567d062dcffb8c886"
     },
     "skills/openspec-kit-visual-qa/SKILL.md": {
       "class": "skill",
@@ -155,82 +231,6 @@
     "skills/openspec-kit-visual-qa/references/routine-prompt.md": {
       "class": "skill",
       "sha256": "9cf5ef48d3ac84674b9a0b9277521f5c335cbbb626df846b6e2c493a39e60eac"
-    },
-    "templates/authoring_rules.md": {
-      "class": "kit",
-      "sha256": "ee73507b8e7d63ef9cec3852c149f67139b57dd42e5980c6f38c6bee8da0fd7a"
-    },
-    "templates/cycle_prompt.md": {
-      "class": "kit",
-      "sha256": "1bc42b3b1960810b8ed51f3dbcc4e847788292cd67c43499d1aa6a55103f088b"
-    },
-    "templates/cycle_state.json": {
-      "class": "kit",
-      "sha256": "84e1479f9ba96c1b7fb0b3c17ac9cd060db7a9ee703891026e2ca221c0c055fc"
-    },
-    "templates/jev/canary.yaml": {
-      "class": "kit",
-      "sha256": "f4e28473922ec2cca990646a07309929472467c3466ee45b50f1d126c24b792e"
-    },
-    "templates/jev/change_risk.yaml": {
-      "class": "kit",
-      "sha256": "c30e30952a4f13c1b966dd9528fa3cad6c2770921e6fdc8a0365bffd60d5baa4"
-    },
-    "templates/jev/failure_triage.yaml": {
-      "class": "kit",
-      "sha256": "422fd41537575fe5fbbe405f4d243bf827672a5b9576a7d1729e7a78563206e8"
-    },
-    "templates/jev/fixtures/README.md": {
-      "class": "kit",
-      "sha256": "38def538c3355b1528ed6d90d3aa8b3223b3c0f0c4801f9c6308f754ef9eca63"
-    },
-    "templates/jev/fixtures/canary.failing.log": {
-      "class": "kit",
-      "sha256": "b84c000142c28c1990a430f9adabb0e339fd074e86339b3b41e0e52f4d29501e"
-    },
-    "templates/jev/fixtures/change_risk.high.json": {
-      "class": "kit",
-      "sha256": "f178f2a793bd2a2068e415c2504dc51e53474018d59117a3b25ad1d2a361eeee"
-    },
-    "templates/jev/fixtures/change_risk.low.json": {
-      "class": "kit",
-      "sha256": "9c6565dfea2d5f57249c18199be805955b0c29fbd92d156d6e51c310f330cf78"
-    },
-    "templates/jev/fixtures/failure_triage.defect.json": {
-      "class": "kit",
-      "sha256": "2e0cde267733da20f263c9fa56d45de2844d755296224be77b6468bb01f2ec14"
-    },
-    "templates/jev/fixtures/failure_triage.flaky.json": {
-      "class": "kit",
-      "sha256": "45d1e8b6ee90f8abedd2b68b38739af1e7d7edc5207992c48e64b06d59fa4492"
-    },
-    "templates/jev/fixtures/plan_review.bad.json": {
-      "class": "kit",
-      "sha256": "e5f5a2fa06be660c0172cc43d4c390662fac370cb1313c742c3e27ea2b3c84af"
-    },
-    "templates/jev/fixtures/plan_review.good.json": {
-      "class": "kit",
-      "sha256": "96cf49937c492251ac5e7f316e23f527be5a48a70d96cf48309ed3b3c9558ae3"
-    },
-    "templates/jev/fixtures/proposal_review.bad.json": {
-      "class": "kit",
-      "sha256": "7b82d5ae667ab22acc641ee98499ad5963cf74b4c76d143a16cbb72be395c0e4"
-    },
-    "templates/jev/fixtures/proposal_review.good.json": {
-      "class": "kit",
-      "sha256": "141a994c0c6a18d7e3594f95923c17f23f8448fd68eb33bef9fea9f46921d49e"
-    },
-    "templates/jev/plan_review.yaml": {
-      "class": "kit",
-      "sha256": "a36c552551df57dae51a96c4cf48f32acd083f195e1d6df36e1662893bc715b4"
-    },
-    "templates/jev/proposal_review.yaml": {
-      "class": "kit",
-      "sha256": "0c3a2abb8467ff052a260d213b308c2c9a386d1a5d420240e4d0baffa6b444c1"
-    },
-    "templates/jev/task_priority.yaml": {
-      "class": "kit",
-      "sha256": "6d0839da60e3e9c792dff6fbaceaa9178752544cd5c0f08ba0842244422922af"
     }
   }
 }

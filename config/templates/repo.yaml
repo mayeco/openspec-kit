@@ -6,7 +6,7 @@ base_branch: "{{BASE_BRANCH}}"   # the branch the merger pushes to, e.g. "main"
 # Optional: a script of this repository, sourced from its root before each of its commands
 # (the gates below, the dev command, and `bash bin/repo_exec.sh <repo> <command>`). It
 # activates the toolchain the repository pins (Ruby, Node, Python versions, gemsets) and
-# exports what its commands need. Start from config/repo_env.template.sh of the umbrella.
+# exports what its commands need. Start from config/templates/repo_env.sh of the umbrella.
 # Agents may not change it: the merger blocks a change that does. Empty: plain shell.
 env_script: ""                  # e.g. "script/env.sh"
 

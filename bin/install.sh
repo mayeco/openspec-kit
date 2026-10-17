@@ -10,8 +10,8 @@
 # `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
 #
 # Agents: claude, codex, copilot, hermes, opencode. init installs the kit (bin/,
-# templates/, config/repo*.template.*) and the skills of the selected agents
-# only, each in its agent's own directory. It records the agents, and the one
+# config/templates/) and its skills in .agents/skills/, the directory agents
+# share, plus a copy for each other selected agent. It records the agents, and the one
 # that runs each role (plan, build, cycle), in config/agents.yaml, which the
 # scripts read. With one agent it runs every role; with more, a role not given
 # as an option is asked. init also creates the files the application owns from

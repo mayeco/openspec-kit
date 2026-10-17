@@ -5,7 +5,7 @@
 # Usage: bin/jev_contract.sh [--live]
 #
 # Offline (default; free, needs no key):
-#   - every templates/jev/*.yaml passes `jev validate --strict`;
+#   - every config/templates/jev/*.yaml passes `jev validate --strict`;
 #   - every gate's asserts dry-run against its question file (jev rejects a
 #     condition that names a missing question, exit 2);
 #   - every routing rule names an existing question and option;
@@ -20,7 +20,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 LIVE=0; [ "${1:-}" = "--live" ] && LIVE=1
-FIX=templates/jev/fixtures
+FIX=config/templates/jev/fixtures
 # An application's policy; the kit's own source tree keeps it as a seed.
 POLICY=config/jev_policy.yaml
 [ -f "$POLICY" ] || POLICY=seeds/config/jev_policy.yaml
@@ -44,7 +44,7 @@ field() { ruby -rjson -e 'd = JSON.parse(STDIN.read); puts d.dig(*ARGV)' "$@"; }
 
 echo "== Offline contract"
 check "jev is installed" command -v jev
-for f in templates/jev/*.yaml; do
+for f in config/templates/jev/*.yaml; do
   check "$(basename "$f") passes jev validate --strict" jev validate -f "$f" --strict -o json --quiet
 done
 check "policy pins a versioned model ($MODEL)" bash -c "[[ '$MODEL' =~ ^jev-[0-9]+\.[0-9]+\.[0-9]+$ ]]"
@@ -73,23 +73,23 @@ if [ "$LIVE" -eq 1 ]; then
 
   CANARY=(--assert "all_gates_passed >= 0.8" --assert "reports_failure <= 0.2")
   # The canary carries its own passing gate log as `state`.
-  OUT="$(jev eval -f templates/jev/canary.yaml --model "$MODEL" -o json --quiet --no-input "${CANARY[@]}" 2>/dev/null)"; RC=$?
+  OUT="$(jev eval -f config/templates/jev/canary.yaml --model "$MODEL" -o json --quiet --no-input "${CANARY[@]}" 2>/dev/null)"; RC=$?
   check "canary: obvious yes passes (exit $RC, model $(printf '%s' "$OUT" | field model))" test "$RC" -eq 0
   check "canary: answered by the pinned model" test "$(printf '%s' "$OUT" | field model)" = "$MODEL"
-  ask templates/jev/canary.yaml "$FIX/canary.failing.log" "${CANARY[@]}" >/dev/null 2>&1; RC=$?
+  ask config/templates/jev/canary.yaml "$FIX/canary.failing.log" "${CANARY[@]}" >/dev/null 2>&1; RC=$?
   check "canary: obvious no fails the gate (exit $RC, expected 10)" test "$RC" -eq 10
 
   assert_args plan_review
-  ask templates/jev/plan_review.yaml "$FIX/plan_review.good.json" "${ASSERT_ARGS[@]}" > /tmp/jev_good.$$ 2>&1; RC=$?
+  ask config/templates/jev/plan_review.yaml "$FIX/plan_review.good.json" "${ASSERT_ARGS[@]}" > /tmp/jev_good.$$ 2>&1; RC=$?
   check "plan_review: good plan passes (exit $RC)" test "$RC" -eq 0
   [ "$RC" -ne 0 ] && field gate conditions < /tmp/jev_good.$$ 2>/dev/null | sed 's/^/          /'
-  ask templates/jev/plan_review.yaml "$FIX/plan_review.bad.json" "${ASSERT_ARGS[@]}" > /tmp/jev_bad.$$ 2>&1; RC=$?
+  ask config/templates/jev/plan_review.yaml "$FIX/plan_review.bad.json" "${ASSERT_ARGS[@]}" > /tmp/jev_bad.$$ 2>&1; RC=$?
   check "plan_review: vague, bundled plan fails (exit $RC)" test "$RC" -eq 10
   rm -f /tmp/jev_good.$$ /tmp/jev_bad.$$
 
   triage() { # <fixture> <expected choice> <rule name for the confidence threshold or "">
     local out choice conf min
-    out="$(ask templates/jev/failure_triage.yaml "$FIX/failure_triage.$1.json" 2>/dev/null)"
+    out="$(ask config/templates/jev/failure_triage.yaml "$FIX/failure_triage.$1.json" 2>/dev/null)"
     choice="$(printf '%s' "$out" | field answers cause choice)"
     conf="$(printf '%s' "$out" | field answers cause confidence)"
     check "failure_triage: $1 log classified as $2 (got $choice @ $conf)" test "$choice" = "$2"
@@ -104,7 +104,7 @@ if [ "$LIVE" -eq 1 ]; then
 
   risk() { # <fixture> <expect block: yes|no>
     local out fired
-    out="$(ask templates/jev/change_risk.yaml "$FIX/change_risk.$1.json" 2>/dev/null)"
+    out="$(ask config/templates/jev/change_risk.yaml "$FIX/change_risk.$1.json" 2>/dev/null)"
     fired="$(printf '%s' "$out" | ruby -ryaml -rjson -e '
       answers = JSON.parse(STDIN.read)["answers"]
       rules = YAML.safe_load_file(ARGV[0]).dig("gates", "change_risk", "block_when")
@@ -120,10 +120,10 @@ if [ "$LIVE" -eq 1 ]; then
   risk high yes
 
   assert_args proposal_review
-  ask templates/jev/proposal_review.yaml "$FIX/proposal_review.good.json" "${ASSERT_ARGS[@]}" > /tmp/jev_prop.$$ 2>&1; RC=$?
+  ask config/templates/jev/proposal_review.yaml "$FIX/proposal_review.good.json" "${ASSERT_ARGS[@]}" > /tmp/jev_prop.$$ 2>&1; RC=$?
   check "proposal_review: scoped roadmap feature is approved (exit $RC)" test "$RC" -eq 0
   [ "$RC" -ne 0 ] && field gate conditions < /tmp/jev_prop.$$ 2>/dev/null | sed 's/^/          /'
-  ask templates/jev/proposal_review.yaml "$FIX/proposal_review.bad.json" "${ASSERT_ARGS[@]}" >/dev/null 2>&1; RC=$?
+  ask config/templates/jev/proposal_review.yaml "$FIX/proposal_review.bad.json" "${ASSERT_ARGS[@]}" >/dev/null 2>&1; RC=$?
   check "proposal_review: bundled, risky proposal waits for a human (exit $RC)" test "$RC" -eq 10
   rm -f /tmp/jev_prop.$$
 fi

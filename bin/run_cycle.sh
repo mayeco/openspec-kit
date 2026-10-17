@@ -99,7 +99,7 @@ exec > >(tee -a "$CYCLE_DIR/cycle-$STAMP.log") 2>&1
 ENGINE_CYCLE="$(ruby bin/lib/agents.rb engine cycle)"
 
 # First cycle: start the state from its template.
-[ -f "$CYCLE_DIR/state.json" ] || cp templates/cycle_state.json "$CYCLE_DIR/state.json"
+[ -f "$CYCLE_DIR/state.json" ] || cp config/templates/cycle_state.json "$CYCLE_DIR/state.json"
 
 echo "== cycle $STAMP"
 DISPATCHING="$(dispatch_owner || true)"

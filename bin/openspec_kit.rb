@@ -14,8 +14,8 @@
 #   ruby bin/openspec_kit.rb verify [<app-dir>]
 #
 # Kit files are replaced on upgrade and are never edited in the application.
-# Skills ship once, in skills/<name>/, and are installed, as kit files,
-# into the skills directory of each agent the application selected. The
+# Skills ship once, in skills/<name>/, and are installed, as kit files, into
+# .agents/skills/ and the skills directory of each other selected agent. The
 # selection and the agent of each role are kept in config/agents.yaml, which
 # the scripts read. Seed files are created once and then belong to the
 # application: a changed template arrives next to them as <file>.new.
@@ -117,11 +117,12 @@ module OpenSpecKit
   end
 
   # { path in the application => path in the release }: the kit files, and every
-  # shipped skill in the skills directory of each selected agent.
+  # shipped skill in .agents/skills/, the shared skills directory, and in the skills
+  # directory of each other selected agent.
   def kit_plan(manifest, agents)
     plan = files(manifest, 'kit').keys.to_h { |rel| [rel, rel] }
     files(manifest, 'skill').each_key do |rel|
-      agents.each { |agent| plan[File.join(OpenSpecAgents.skills_dir(agent), rel.delete_prefix('skills/'))] = rel }
+      OpenSpecAgents.skills_dirs(agents).each { |dir| plan[File.join(dir, rel.delete_prefix('skills/'))] = rel }
     end
     plan
   end
@@ -182,7 +183,7 @@ module OpenSpecKit
   # `openspec init` creates openspec/config.yaml, which the project owns, and adds the
   # OpenSpec skills of each agent; on an existing project it only adds what is missing.
   def openspec_init(target, agents)
-    tools = agents.map { |agent| OpenSpecAgents.tool(agent) }.join(',')
+    tools = OpenSpecAgents.tools(agents).join(',')
     out, status = Open3.capture2e('openspec', 'init', '--tools', tools, '--no-animation', '--no-copilot-cloud', '.', chdir: target)
     raise Error, "openspec init failed: #{out.strip}" unless status.success?
   end
@@ -220,7 +221,7 @@ module OpenSpecKit
     seeded.each { |rel| copy(source, target, rel) }
     OpenSpecAgents.write(target, agents, roles)
     append_gitignore(target)
-    # The framework's authoring rules travel with the kit (templates/authoring_rules.md).
+    # The framework's authoring rules travel with the kit (config/templates/authoring_rules.md).
     openspec_init(target, agents)
     write_lock(target, manifest, plan, agents)
     puts "kit: installed v#{manifest['version']} into #{target} " \
@@ -228,9 +229,9 @@ module OpenSpecKit
     puts "agents: #{describe(agents, roles)}, in #{OpenSpecAgents::CONFIG}"
     puts 'next: fill the {{...}} placeholders in README.md and ROADMAP.md, describe the project in ' \
          'openspec/config.yaml, add child repos under repos/, commit, then schedule the headless cycle ' \
-         "(crontab or an agent app: #{OpenSpecAgents.skills_dir(roles['cycle'])}/openspec-kit-cycle/references/routine-prompt.md) " \
+         "(crontab or an agent app: #{OpenSpecAgents::DEFAULT_SKILLS}/openspec-kit-cycle/references/routine-prompt.md) " \
          'and the visual QA session in an agent app with a browser ' \
-         "(#{OpenSpecAgents.skills_dir(agents.first)}/openspec-kit-visual-qa/references/routine-prompt.md)"
+         "(#{OpenSpecAgents::DEFAULT_SKILLS}/openspec-kit-visual-qa/references/routine-prompt.md)"
   end
 
   def upgrade(source, target, agents:, roles:, force:)
@@ -294,6 +295,7 @@ module OpenSpecKit
     puts "agents: #{describe(agents, roles)}, in #{OpenSpecAgents::CONFIG}" if reselected
     (previous - agents).each do |agent|
       left = File.join(OpenSpecAgents.skills_dir(agent), '')
+      next puts("  #{agent} is no longer used; #{left} stays: every application keeps the kit's skills there") if left.chomp('/') == OpenSpecAgents::DEFAULT_SKILLS
       note = Dir.exist?(File.join(target, left)) ? "; delete the OpenSpec skills left in #{left} if you do not need them" : ''
       puts "  #{agent} is no longer used: its kit skills were removed#{note}"
     end

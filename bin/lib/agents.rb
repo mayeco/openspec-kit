@@ -34,6 +34,9 @@ module OpenSpecAgents
     'cycle' => 'runs the judgment of the scheduled cycle'
   }.freeze
   CONFIG = 'config/agents.yaml'
+  # Every application gets the kit's skills here, the skills directory agents share;
+  # the other selected agents get a copy in their own directory.
+  DEFAULT_SKILLS = '.agents/skills'
   # all: agents may run any command (servers, curl, browsers, test tools) except the
   # git commands only the scripts run. restricted: Claude Code may only read, edit, run
   # openspec, inspect git, run the gates and ask Jev; Codex keeps its workspace sandbox.
@@ -56,6 +59,12 @@ module OpenSpecAgents
   end
 
   def skills_dir(name) = SUPPORTED.fetch(name)['skills']
+
+  # Where the kit's skills go for these agents: the shared directory, then theirs.
+  def skills_dirs(agents) = ([DEFAULT_SKILLS] + agents.map { |agent| skills_dir(agent) }).uniq
+
+  # The `openspec init --tools` ids for these agents, `agents` (the shared directory) first.
+  def tools(agents) = (['agents'] + agents.map { |agent| tool(agent) }).uniq
 
   def tool(name) = SUPPORTED.fetch(name)['tool']
 

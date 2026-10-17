@@ -15,7 +15,7 @@ Everything the cycle writes is in English: the report, `state.json` (journal inc
 | :--- | :--- | :--- |
 | Scheduled task | Claude app, Hermes app or another agent app, with `references/routine-prompt.md` as its prompt | Runs `bash bin/run_cycle.sh --detach`, reports the line it prints, ends. The prompt never changes: the scripts read every setting from `config/` |
 | `bin/run_cycle.sh` | Detached script | Pause switch, cycle lock, preflight, drains the merge queue, syncs the checkout, renders this cycle's prompt (`bin/cycle_prompt.rb`: the next exploration strategy, whether a dispatch is running, the roadmap and approval settings), starts the judgment agent, scope guard, reviews the proposals (`bin/proposals.rb`), commits and pushes `MEMORY.md`, the backlog and the proposals, releases the cycle lock, then runs the dispatcher with a merger beside it unless a dispatch is already running |
-| Judgment agent | The `cycle` role of `config/agents.yaml`, started headless by the script with `log/cycle/prompt-<stamp>.md` (`templates/cycle_prompt.md` plus "This cycle") | The judgment procedure below, and nothing else. It has no browser |
+| Judgment agent | The `cycle` role of `config/agents.yaml`, started headless by the script with `log/cycle/prompt-<stamp>.md` (`config/templates/cycle_prompt.md` plus "This cycle") | The judgment procedure below, and nothing else. It has no browser |
 | Visual QA session | A scheduled task of an agent app with a browser, with the `openspec-kit-visual-qa` skill | Checks in the browser what the cycle queued and explores the strategies with `needs: browser`. While it holds `log/visual_qa.lock` the cycle does not judge |
 
 The script owns every step that must not depend on a model remembering it. The judgment agent never commits, pushes, dispatches or merges.
@@ -30,7 +30,7 @@ Under `log/cycle/` (git-ignored) and `config/` (versioned):
 | `config/exploration.yaml` | The exploration strategies (slug, name, kind, directive) and their order. The script picks one per cycle |
 | `ROADMAP.md` (`roadmap.file`) | The features to build, in priority order. The cycle proposes the next ones |
 | `config/agent_proposals.json` | Proposals: improvements, missing capabilities and roadmap features waiting for approval, then queued and integrated. The judgment adds them; `bin/proposals.rb` and humans approve them |
-| `log/cycle/state.json` | The cycle's memory between runs. The script creates it from `templates/cycle_state.json` on the first cycle |
+| `log/cycle/state.json` | The cycle's memory between runs. The script creates it from `config/templates/cycle_state.json` on the first cycle |
 | `log/cycle/reports/<stamp>.md` | One report per cycle (`<stamp>` = `YYYYMMDD-HHMM`, UTC), from `references/report.template.md` |
 | `log/cycle/cycle-<stamp>.log` | The script's own log of the cycle: preflight, merge, sync, plan, judgment, proposals, record, dispatch |
 | `log/cycle/prompt-<stamp>.md` | The prompt the judgment agent got, with this cycle's plan |
@@ -48,7 +48,7 @@ Durable knowledge does not go to `state.json`: conventions, pitfalls and lessons
 
 - Write only `MEMORY.md`, `config/agent_backlog.json`, `config/agent_proposals.json`, files under `log/cycle/`, and `log/PAUSE`. The script checks this after you exit: any other write pauses the system and nothing is recorded.
 - Never commit, push, pull, switch branches, or start or stop the dispatcher or the merger.
-- Never edit `repos/**`, `openspec/**`, `bin/**`, `templates/**` or skills. Never create change directories: the dispatcher's PLAN phase writes the OpenSpec artifacts of every backlog item.
+- Never edit `repos/**`, `openspec/**`, `bin/**`, `config/templates/**` or skills. Never create change directories: the dispatcher's PLAN phase writes the OpenSpec artifacts of every backlog item.
 - Never delete blocked records or approval files; only a human approves a `risk_review` (`log/approved/<change>`).
 - Add proposals with `"status": "proposed"` only. Never approve, reject or delete a proposal, and never move one into the backlog: the script and humans do that.
 - Local hosts only. Never read `.env*`, key files or credentials, and never pass them to Jev.
@@ -79,7 +79,7 @@ Jev is a calibrated judge: it answers a typed question with a probability, never
 ### 3. Triage blocked changes
 
 - For each `log/blocked/<change>.json`, read `reason` and `details` and the worker log under `log/workers/`, and write a diagnosis and the recommended human action into the report.
-- For `gate_failure`, the dispatcher's own question file gives a second opinion: `jev eval -f templates/jev/failure_triage.yaml --state-file <log excerpt> --model <model> --field answers.cause`.
+- For `gate_failure`, the dispatcher's own question file gives a second opinion: `jev eval -f config/templates/jev/failure_triage.yaml --state-file <log excerpt> --model <model> --field answers.cause`.
 - For `risk_review`, list what Jev flagged; only a human approves it.
 - Create `log/PAUSE` (one line saying why) only for a systemic failure: the same reason blocking three or more changes, or gates failing on the base branch.
 - Count the cycle as failed in `consecutive_failures` when everything the previous dispatch started ended blocked; reset it when something was integrated. While a dispatch is still running, leave the count as it is. At `max_consecutive_failures`, queue and propose nothing and say in the report that a human is needed.
@@ -88,7 +88,7 @@ Jev is a calibrated judge: it answers a typed question with a probability, never
 
 - Explore with the strategy of "This cycle" and its directive, using the `openspec-kit-qa` skill ("Explore one area") and at least `exploration.minutes` of the budget. Add `{strategy, date, findings}` to `exploration_state.history` (keep the last 30). The script picks the next strategy; never choose another one.
 - You run headless. When only a browser can confirm something (a rendered page, a flow, the console), queue a check for the visual QA session, if "This cycle" says it is on: `ruby bin/visual_qa.rb request "<what to check, where, and why>" [--change <name>]`.
-- Record at most `exploration.max_new_backlog_items_per_cycle` findings, as `openspec-kit-qa` "Record a finding" describes. Defects and regressions go to the backlog: duplicates checked, evaluated with `templates/jev/task_priority.yaml`, and only when `actionable_impact >= 0.7` and `urgency` is not `cannot_tell`. Improvements and missing capabilities go to `config/agent_proposals.json`. Everything else goes to `needs_triage` and the report.
+- Record at most `exploration.max_new_backlog_items_per_cycle` findings, as `openspec-kit-qa` "Record a finding" describes. Defects and regressions go to the backlog: duplicates checked, evaluated with `config/templates/jev/task_priority.yaml`, and only when `actionable_impact >= 0.7` and `urgency` is not `cannot_tell`. Improvements and missing capabilities go to `config/agent_proposals.json`. Everything else goes to `needs_triage` and the report.
 
 ### 5. Propose from the roadmap
 

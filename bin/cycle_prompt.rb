@@ -5,7 +5,7 @@
 # bin/cycle_prompt.rb
 #
 # Renders the judgment agent's prompt for one scheduled cycle: the fixed
-# instructions of templates/cycle_prompt.md, followed by this cycle's plan,
+# instructions of config/templates/cycle_prompt.md, followed by this cycle's plan,
 # which the script decides so that no model has to remember it:
 #   - the exploration strategy, picked from config/exploration.yaml in
 #     rotation (or at random, never one of the most recent half again). With
@@ -30,7 +30,7 @@ Encoding.default_external = Encoding::UTF_8
 
 module CyclePrompt
   ROOT = File.expand_path('..', __dir__)
-  TEMPLATE = File.join(ROOT, 'templates', 'cycle_prompt.md')
+  TEMPLATE = File.join(ROOT, 'config', 'templates', 'cycle_prompt.md')
   CYCLE = File.join(ROOT, 'config', 'cycle.yaml')
   EXPLORATION = File.join(ROOT, 'config', 'exploration.yaml')
   STATE = File.join(ROOT, 'log', 'cycle', 'strategy_state.json')
@@ -43,7 +43,7 @@ module CyclePrompt
                   '(openspec-kit-qa, "Record a finding"), at most %<max>d this cycle'
   }.freeze
   APPROVAL = {
-    'jev' => 'after you exit, the script asks Jev (`templates/jev/proposal_review.yaml`) and queues the ' \
+    'jev' => 'after you exit, the script asks Jev (`config/templates/jev/proposal_review.yaml`) and queues the ' \
              'proposals it approves; the rest wait for a human',
     'human' => 'a human approves each one (`ruby bin/proposals.rb approve <change>`); the script then queues it',
     'auto' => 'the script queues every proposal after you exit, without review'
