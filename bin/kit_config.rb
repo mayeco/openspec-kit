@@ -92,6 +92,9 @@ module KitConfig
                                      'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
     'dispatch.aging_hours' => ['every this many hours an item waits, it is ordered one priority higher; 0: off', 'bin/openspec_dispatcher.rb'],
     'limits.agent_seconds' => ['limit of one agent call', 'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
+    'limits.agent_retries' => ['extra attempts with the same agent after a failure, before the next agent of the role; 0: none',
+                               'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
+    'limits.agent_retry_delay_seconds' => ['wait before trying the same agent again', 'bin/agent_exec.sh'],
     'limits.agent_budget_usd' => ["Claude Code's spending cap per call", 'bin/agent_exec.sh'],
     'limits.gate_seconds' => ["limit of one repository's gates", 'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
     'limits.lease_seconds' => ["a change's lease is stale after this", 'bin/lib/openspec_orchestrator.rb']
@@ -106,7 +109,7 @@ module KitConfig
     setting('agents.agents', :list, nil, "the agent CLIs this application uses; each one has the kit's skills",
             'bin/install.sh; bin/check_ai_engines.sh pings each one',
             change: '<release>/bin/install.sh upgrade <app> --agents LIST, from a checkout of the release: it installs their skills'),
-    *OpenSpecAgents::ROLES.map { |role, does| setting("agents.roles.#{role}", :agent, 'the first agent CLI on PATH', does, ROLE_READERS.fetch(role)) },
+    *OpenSpecAgents::ROLES.map { |role, does| setting("agents.roles.#{role}", :agents, 'the first agent CLI on PATH', "#{does}; agents in order; one that fails is tried again limits.agent_retries times, then the next continues its work", ROLE_READERS.fetch(role)) },
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
             'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex sandboxed',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::PERMISSIONS),
@@ -292,7 +295,11 @@ module KitConfig
   def format_value(value)
     case value
     when nil then '(none)'
-    when Array then value.all?(Hash) && value.any? ? "#{value.size} item(s)" : value.to_json
+    when Array
+      if value.all?(Hash) && value.any? then "#{value.size} item(s)"
+      elsif value.all?(String) then "[#{value.join(', ')}]"
+      else value.to_json
+      end
     when String then value.empty? ? '""' : value
     else value.to_json
     end
@@ -360,8 +367,9 @@ module KitConfig
 
       quote = [true, false].include?(value) ? ' (YAML reads off, on, yes and no as true or false: quote it, "off")' : ''
       "must be one of #{setting['values'].join(', ')}#{quote}"
-    when :agent
-      "must be one of #{OpenSpecAgents::SUPPORTED.keys.join(', ')}" unless OpenSpecAgents::SUPPORTED.key?(value.to_s)
+    when :agents
+      list = OpenSpecAgents.names(value)
+      "must list agents among #{OpenSpecAgents::SUPPORTED.keys.join(', ')}" if list.empty? || (list - OpenSpecAgents::SUPPORTED.keys).any?
     when :string, :path then 'must be text' unless value.is_a?(String)
     when :list then 'must be a list' unless value.is_a?(Array)
     when :pipeline
@@ -401,13 +409,16 @@ module KitConfig
     unknown = agents - OpenSpecAgents::SUPPORTED.keys
     report[:errors] << "agents: unknown #{unknown.join(', ')}" if unknown.any?
     OpenSpecAgents::ROLES.each_key do |role|
-      agent = data.dig('roles', role)
-      if agent.nil?
+      list = OpenSpecAgents.names(data.dig('roles', role))
+      if list.empty?
         report[:warnings] << "roles.#{role}: not set; the first agent CLI on PATH runs it"
-      elsif OpenSpecAgents::SUPPORTED.key?(agent.to_s) && !agents.include?(agent.to_s)
-        report[:warnings] << "roles.#{role}: #{agent} is not among the agents, so it has no skills here: " \
-                             '<release>/bin/install.sh upgrade <app> --agents ... adds it'
+        next
       end
+      outside = (list & OpenSpecAgents::SUPPORTED.keys) - agents
+      next if outside.empty?
+
+      report[:warnings] << "roles.#{role}: #{outside.join(', ')} not among the agents, so without skills here: " \
+                           '<release>/bin/install.sh upgrade <app> --agents ... adds it'
     end
   end
 
@@ -649,13 +660,15 @@ module KitConfig
             when :int then Integer(text, 10)
             when :bool then { 'true' => true, 'false' => false }.fetch(text)
             when :pipeline then OpenSpecSettings.parse(setting['key'].delete_prefix('pipeline.'), text) || text
+            when :agents then OpenSpecAgents.names(text)
             else text
             end
     problem = type_problem(setting, value)
     raise Error, "#{setting['key']} #{problem}" if problem
 
-    if setting['type'] == :agent && !Array(data['agents']).map(&:to_s).include?(value)
-      raise Error, "#{value} is not among the agents of config/agents.yaml (#{Array(data['agents']).join(', ')}); " \
+    stray = setting['type'] == :agents ? value - Array(data['agents']).map(&:to_s) : []
+    if stray.any?
+      raise Error, "#{stray.join(', ')} not among the agents of config/agents.yaml (#{Array(data['agents']).join(', ')}); " \
                    'add it first with <release>/bin/install.sh upgrade <app> --agents ..., which installs its skills'
     end
     value
@@ -664,6 +677,7 @@ module KitConfig
   end
 
   def literal(value, old_text)
+    return "[#{value.join(', ')}]" if value.is_a?(Array)
     return value.to_s unless value.is_a?(String)
     return value.to_json if old_text.to_s.start_with?('"', "'") || value.empty?
 

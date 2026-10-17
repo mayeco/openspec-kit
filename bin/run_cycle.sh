@@ -118,7 +118,11 @@ else
   PROMPT="$CYCLE_DIR/prompt-$STAMP.md"
   ruby bin/cycle_prompt.rb "$PROMPT" --dispatch-running "$DISPATCHING" || exit 1
   echo "== judgment (${ENGINE_CYCLE:-first engine on PATH})"
-  bash bin/agent_exec.sh "$ROOT" "$PROMPT" "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
+  # Each attempt gets the judgment's budget plus 15 minutes, not limits.agent_seconds (a
+  # long BUILD's limit): a stuck judgment must not hold up the hourly cycle and its dispatch.
+  budget="$(ruby -ryaml -e 'puts(((YAML.safe_load_file("config/cycle.yaml") rescue {}) || {}).fetch("qa_time_budget_minutes", 45).to_i)')"
+  AGENT_TIMEOUT_SECONDS="${AGENT_TIMEOUT_SECONDS:-$(( (budget + 15) * 60 ))}" \
+    bash bin/agent_exec.sh "$ROOT" "$PROMPT" "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
 
   echo "== scope guard"; scope_guard "cycle $STAMP" || exit 1
   # Proposals the judgment added are approved (Jev, a human or automatically, as

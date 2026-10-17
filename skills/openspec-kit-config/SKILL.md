@@ -26,7 +26,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 
 | The question | The settings |
 | :--- | :--- |
-| Who plans, builds, judges? | `agents.roles.plan`, `.build`, `.cycle`; the agents themselves: `agents.agents` |
+| Who plans, builds, judges? | `agents.roles.plan`, `.build`, `.cycle`: each a list of agents in order; one that fails is tried again `pipeline.limits.agent_retries` times, then the next one continues its work; the agents themselves: `agents.agents` |
 | What may agents run? | `agents.permissions`: `all`, or `restricted` |
 | How long does a cycle spend, and on what? | `cycle.qa_time_budget_minutes`, `cycle.exploration.minutes`, the strategies of `config/exploration.yaml` and their `order` |
 | How much new work per cycle? | `cycle.exploration.max_new_backlog_items_per_cycle`, `cycle.roadmap.max_new_per_cycle`, `cycle.roadmap.max_open` |
@@ -73,7 +73,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | To approve every proposal themselves | `set cycle.proposals.approval human` |
 | Jev to block risky changes | Read what it answered first, `ruby bin/jev_report.rb --gate change_risk`, then `set jev.gates.change_risk.mode enforce` |
 | No browser session | `set cycle.visual_qa.enabled false` |
-| Another installed agent to judge | `set agents.roles.cycle codex` |
+| Another installed agent to judge, with a fallback | `set agents.roles.cycle codex,claude` |
 | Agents limited to an allowlist | `set agents.permissions restricted` |
 | Strategies in random order | `set exploration.order random` |
 | Shorter cycles | `set cycle.qa_time_budget_minutes 30` |

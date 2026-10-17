@@ -14,7 +14,7 @@ base_branch: master # OPENSPEC_BASE_BRANCH
 
 dispatch:
   workers: 2 # changes one dispatch builds in parallel; OPENSPEC_WORKERS
-  wait_seconds: 1800 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
+  wait_seconds: 3600 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
   merge_interval_seconds: 10 # how often a watching merger looks for ready changes; OPENSPEC_MERGE_INTERVAL
   # A change whose code no longer rebases onto the base branch (another change edited
   # the same lines first) is rebuilt on the new base this many times before it waits
@@ -27,7 +27,13 @@ dispatch:
   aging_hours: 6
 
 limits:
-  agent_seconds: 3600 # one agent call; AGENT_TIMEOUT_SECONDS
+  agent_seconds: 7200 # one attempt of an agent (the cycle's judgment: qa_time_budget_minutes + 15); AGENT_TIMEOUT_SECONDS
+  # An agent call that fails (timeout, usage limit, error) is tried again this many
+  # times with the same agent, then with the next agent of its role. An attempt that
+  # left changes is followed by one told what it changed, to continue from there.
+  # 0: no retry. AGENT_RETRIES
+  agent_retries: 1
+  agent_retry_delay_seconds: 120 # wait before trying the same agent again; AGENT_RETRY_DELAY_SECONDS
   agent_budget_usd: 5 # Claude Code's spending cap per call; AGENT_MAX_BUDGET_USD
   gate_seconds: 2700 # one repository's gates, in the dispatcher and the merger; OPENSPEC_GATE_TIMEOUT
   lease_seconds: 7200 # a change's lease is stale after this; OPENSPEC_LEASE_TTL

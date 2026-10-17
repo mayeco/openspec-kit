@@ -29,7 +29,7 @@ openspec-kit/bin/install.sh init ../xyz --agents claude,hermes --plan claude --b
 ```
 
 - `--agents`: the agent CLIs the application uses: `claude`, `codex`, `copilot`, `hermes`, `opencode`.
-- `--plan`, `--build`, `--cycle`: the agent of each role. **Plan** writes the OpenSpec artifacts of each backlog item, **build** implements them, **cycle** runs the scheduled judgment (verification, exploration, triage, memory). With one agent it takes every role and nothing is asked; with more, a role you leave out is asked on a terminal.
+- `--plan`, `--build`, `--cycle`: the agents of each role. **Plan** writes the OpenSpec artifacts of each backlog item, **build** implements them, **cycle** runs the scheduled judgment (verification, exploration, triage, memory). A role is one agent (`--cycle hermes`) or several in order of preference (`--build claude,hermes`): an agent that fails (out of quota, not logged in, timed out) is tried again `limits.agent_retries` times (`config/pipeline.yaml`), then the next one runs and continues from what the failed attempts left, told about it in its prompt. A role only falls back to the agents you list. With one agent it takes every role and nothing is asked; with more, a role you leave out is asked on a terminal.
 - The target may be a new directory or an existing repository. The install refuses a target that already has the kit (use `upgrade`) and kit files that already exist with other content (unless `--force`).
 
 What it creates in `xyz`:
@@ -39,7 +39,7 @@ xyz/
 ├── bin/                     the kit's scripts (replaced on upgrade)
 ├── config/
 │   ├── templates/           the kit's prompts, Jev questions, repo.yaml and repo_env.sh (replaced on upgrade)
-│   ├── agents.yaml          the agents, the agent of each role, the agents' permissions
+│   ├── agents.yaml          the agents, each role's agents in order (fallbacks), the agents' permissions
 │   ├── pipeline.yaml        the base branch, how many changes build at once, the limits of agent calls and gates
 │   ├── cycle.yaml           the cycle's settings: budget, roadmap, proposal approval, visual QA
 │   ├── exploration.yaml     the exploration strategies the cycle rotates through
@@ -163,7 +163,7 @@ openspec-kit/bin/install.sh upgrade ../xyz --agents claude,copilot --cycle copil
 
 The upgrade refuses while the dispatcher or the merger runs, with uncommitted changes, or with kit files edited in place (`--force` discards those edits). It works on a branch `kit-upgrade-v<version>` (or `kit-agents-<agents>`): it replaces the kit, installs or removes skills per agent, writes `<file>.new` next to every setting whose template changed, and commits. Review the branch, merge what you need from the `.new` files, delete them and merge.
 
-A role or the permissions can also be changed in `config/agents.yaml`, for example `ruby bin/kit_config.rb set agents.roles.cycle claude`; the scripts read it on every run.
+A role or the permissions can also be changed in `config/agents.yaml`, for example `ruby bin/kit_config.rb set agents.roles.cycle claude,hermes` (claude first, hermes when claude fails); the scripts read it on every run.
 
 ## 10. Troubleshooting
 
@@ -172,7 +172,7 @@ A role or the permissions can also be changed in `config/agents.yaml`, for examp
 | `install.sh: ... is not a release (no MANIFEST.json)` | Run `init` and `upgrade` from a checkout of a release, not from inside the application |
 | `--plan is required with more than one agent` | Give `--plan`, `--build` and `--cycle`, or run the install on a terminal to be asked |
 | `kit: DRIFT ...` in the preflight | A kit file was edited: restore it (`upgrade --force`) or move the change into the framework |
-| `preflight: FAIL (the engine of a role is not working: ...)` | Log that agent CLI in, or give the role to another agent in `config/agents.yaml` |
+| `preflight: FAIL (no engine of a role is working: ...)` | Every agent in that role's list failed its ping: log one in, or add a working agent to the role in `config/agents.yaml`. A `WARN` for a role only means one of its fallbacks is down |
 | `repo_exec: env_script ... does not exist` | Commit the script in the child repository, or clear `env_script` |
 | `cycle: ... the agent wrote outside its scope` and `log/PAUSE` | Something besides `MEMORY.md`, the backlog and the proposals was uncommitted while a cycle judged (often a setting edited by hand): commit it, then `rm log/PAUSE` |
 | `kit_config: ... must be one of off, advisory, enforce` | YAML reads a bare `off` as false: write `"off"`, or use `ruby bin/kit_config.rb set` |

@@ -9,7 +9,7 @@
 # every file with its sha256 and its class. An installed umbrella keeps the
 # same data in .openspec-kit.lock.
 #
-#   ruby bin/openspec_kit.rb init <app-dir> --source <release-dir> --agents LIST [--plan A --build A --cycle A]
+#   ruby bin/openspec_kit.rb init <app-dir> --source <release-dir> --agents LIST [--plan A[,B] --build A[,B] --cycle A[,B]]
 #   ruby bin/openspec_kit.rb upgrade <app-dir> --source <release-dir> [--agents LIST ...] [--force]
 #   ruby bin/openspec_kit.rb verify [<app-dir>]
 #
@@ -157,29 +157,36 @@ module OpenSpecKit
 
     agents = OpenSpecAgents.parse(list)
     roles = OpenSpecAgents::ROLES.to_h do |role, does|
-      given = roles_opt[role]
-      raise Error, "--#{role} #{given} is not one of the agents (#{agents.join(', ')})" if given && !agents.include?(given)
+      # --plan claude: claude alone. --plan claude,hermes: claude, and hermes when claude fails.
+      given = OpenSpecAgents.names(roles_opt[role])
+      stray = given - agents
+      raise Error, "--#{role} #{stray.join(', ')} is not one of the agents (#{agents.join(', ')})" if stray.any?
 
-      kept = current&.dig('roles', role)
-      choice = given || (agents.first if agents.size == 1) || (kept if agents.include?(kept))
-      choice ||= input.tty? ? ask(role, does, agents, input, output) : nil
-      raise Error, "--#{role} is required with more than one agent: choose one of #{agents.join(', ')}" unless choice
+      kept = Array(current&.dig('roles', role)) & agents
+      chosen = if given.any? then given
+               elsif agents.size == 1 then agents
+               elsif kept.any? then kept
+               elsif input.tty? then ask(role, does, agents, input, output)
+               end
+      raise Error, "--#{role} is required with more than one agent: choose one of #{agents.join(', ')}" unless chosen
 
-      [role, choice]
+      [role, chosen]
     end
     [agents, roles]
   end
 
   def ask(role, does, agents, input, output)
-    output.puts "AGENT_ENGINE_#{role.upcase}: which agent #{does}?"
+    output.puts "AGENT_ENGINE_#{role.upcase}: which agent #{does}? A comma list (claude,hermes) adds fallbacks in order."
     agents.each_with_index { |agent, i| output.puts "  #{i + 1}) #{agent}" }
     loop do
       output.print "Choose 1-#{agents.size} [1]: "
       answer = input.gets or raise Error, "no agent chosen for #{role}"
       answer = answer.strip
-      return agents.first if answer.empty?
-      return agents[answer.to_i - 1] if answer.match?(/\A\d+\z/) && answer.to_i.between?(1, agents.size)
-      return answer if agents.include?(answer)
+      return [agents.first] if answer.empty?
+      return [agents[answer.to_i - 1]] if answer.match?(/\A\d+\z/) && answer.to_i.between?(1, agents.size)
+
+      list = OpenSpecAgents.names(answer)
+      return list if list.any? && (list - agents).empty?
 
       output.puts '  not one of the choices'
     end
@@ -193,7 +200,7 @@ module OpenSpecKit
     raise Error, "openspec init failed: #{out.strip}" unless status.success?
   end
 
-  def describe(agents, roles) = "#{agents.join(', ')} (#{roles.map { |role, agent| "#{role}: #{agent}" }.join(', ')})"
+  def describe(agents, roles) = "#{agents.join(', ')} (#{roles.map { |role, list| "#{role}: #{Array(list).join('>')}" }.join(', ')})"
 
   def append_gitignore(target)
     path = File.join(target, '.gitignore')
@@ -367,7 +374,7 @@ if __FILE__ == $PROGRAM_NAME
     opts.on('--source DIR', 'Release of the deliverable (holds MANIFEST.json)') { |v| options[:source] = File.expand_path(v) }
     opts.on('--agents LIST', "Agents the application uses: #{OpenSpecAgents::SUPPORTED.keys.join(', ')}") { |v| options[:agents] = v }
     OpenSpecAgents::ROLES.each do |role, does|
-      opts.on("--#{role} AGENT", "The agent that #{does}") { |v| options[:roles][role] = v }
+      opts.on("--#{role} AGENTS", "The agent that #{does}, or a comma list in order of preference") { |v| options[:roles][role] = v }
     end
     opts.on('--force', 'init: replace existing kit files; upgrade: discard edits to kit files') { options[:force] = true }
   end

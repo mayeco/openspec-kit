@@ -4,17 +4,21 @@
 # bin/lib/agents.rb
 #
 # The agent CLIs the kit can drive, and the selection an application made when
-# it installed the kit (config/agents.yaml): the agents it uses and the one that
-# runs each role. Scripts read the selection here, so a scheduled task never
-# passes it: its prompt is always the same command.
+# it installed the kit (config/agents.yaml): the agents it uses and, for each
+# role, the agents that run it in order of preference. bin/agent_exec.sh tries
+# them in that order: one that fails (out of quota, not logged in, timed out) is
+# tried again limits.agent_retries times, then the next one runs, told what the
+# failed attempts left so it continues from there. Scripts read the
+# selection here, so a scheduled task never passes it: its prompt is always the
+# same command.
 #
-#   ruby bin/lib/agents.rb engine <plan|build|cycle>   # the engine of a role
+#   ruby bin/lib/agents.rb engine <plan|build|cycle>   # the engines of a role: claude,hermes
 #   ruby bin/lib/agents.rb list                        # the selected agents
 #   ruby bin/lib/agents.rb permissions                 # all | restricted
 #
 # AGENT_ENGINE_PLAN, AGENT_ENGINE_BUILD, AGENT_ENGINE_CYCLE and AGENT_ENGINE
-# override the selection for one run (tests, a manual retry with another agent),
-# and AGENT_PERMISSIONS the permissions.
+# (an agent or a comma list) override the selection for one run (tests, a manual
+# retry with another agent), and AGENT_PERMISSIONS the permissions.
 # ==============================================================================
 
 require 'yaml'
@@ -68,6 +72,9 @@ module OpenSpecAgents
 
   def tool(name) = SUPPORTED.fetch(name)['tool']
 
+  # "claude, hermes", ["claude", "hermes"] or "claude" -> ["claude", "hermes"] / ["claude"].
+  def names(value) = Array(value).flat_map { |v| v.to_s.split(',') }.map(&:strip).reject(&:empty?).uniq
+
   # { 'agents' => [...], 'roles' => { role => agent }, 'permissions' => ... }, or nil without a config.
   def load(root)
     path = File.join(root, CONFIG)
@@ -75,7 +82,7 @@ module OpenSpecAgents
 
     data = YAML.safe_load_file(path) || {}
     agents = Array(data['agents']).map(&:to_s)
-    roles = (data['roles'] || {}).to_h { |role, agent| [role.to_s, agent.to_s] }
+    roles = (data['roles'] || {}).to_h { |role, list| [role.to_s, names(list)] }
     { 'agents' => agents, 'roles' => roles, 'permissions' => data['permissions']&.to_s }
   end
 
@@ -89,15 +96,20 @@ module OpenSpecAgents
     'restricted'
   end
 
-  # The engine of a role: an environment override, then the selection. nil when
-  # neither names one; agent_exec.sh then takes the first agent on PATH.
-  def engine(root, role, env = ENV)
+  # The engines of a role, in order: an environment override, then the selection.
+  # Empty when neither names one; agent_exec.sh then takes the first agent on PATH.
+  def engines(root, role, env = ENV)
     raise Error, "unknown role #{role} (roles: #{ROLES.keys.join(', ')})" unless ROLES.key?(role)
 
-    env["AGENT_ENGINE_#{role.upcase}"] || env['AGENT_ENGINE'] || load(root)&.dig('roles', role)
+    override = env["AGENT_ENGINE_#{role.upcase}"] || env['AGENT_ENGINE']
+    override.to_s.empty? ? Array(load(root)&.dig('roles', role)) : names(override)
   end
 
-  # Rewrites the file with these agents and roles; the permissions already set are kept.
+  # The same as the comma list bin/agent_exec.sh takes, or nil.
+  def engine(root, role, env = ENV) = engines(root, role, env).join(',').then { |list| list.empty? ? nil : list }
+
+  # Rewrites the file with these agents and roles (role => engines in order); the
+  # permissions already set are kept.
   def write(root, agents, roles)
     permissions = load(root)&.fetch('permissions') || DEFAULT_PERMISSIONS
     lines = ['# The agents this application uses, written by install.sh (init, or upgrade --agents).',
@@ -105,9 +117,14 @@ module OpenSpecAgents
              '# so the scheduled task always runs the same command. Change the agents with',
              '# `<release>/bin/install.sh upgrade <app> --agents ...`; a role and the permissions may be edited by hand.',
              "agents: [#{agents.join(', ')}]",
+             '# Each role lists its agents in order of preference. One that fails (out of quota, not',
+             '# logged in, timed out) is tried again limits.agent_retries times (config/pipeline.yaml),',
+             '# then the next one runs and continues from what the failed attempts left.',
              'roles:']
     width = ROLES.keys.map(&:size).max
-    ROLES.each { |role, does| lines << "  #{"#{role}:".ljust(width + 1)} #{roles.fetch(role).ljust(8)} # #{does}" }
+    lists = roles.transform_values { |list| "[#{names(list).join(', ')}]" }
+    pad = lists.values.map(&:size).max
+    ROLES.each { |role, does| lines << "  #{"#{role}:".ljust(width + 1)} #{lists.fetch(role).ljust(pad)} # #{does}" }
     lines.push('# all: agents may run any command (servers, curl, browsers, test tools), except the git',
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
                '# restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates',

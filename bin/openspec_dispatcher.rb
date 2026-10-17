@@ -27,6 +27,8 @@ class OpenSpecDispatcher
   DEFAULT_WAIT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'dispatch.wait_seconds')
   GATE_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.gate_seconds')
   AGENT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.agent_seconds')
+  AGENT_RETRIES = OpenSpecSettings.get(O::ROOT, 'limits.agent_retries')
+  RETRY_DELAY = OpenSpecSettings.get(O::ROOT, 'limits.agent_retry_delay_seconds')
   CONFLICT_REBUILDS = OpenSpecSettings.get(O::ROOT, 'dispatch.conflict_rebuilds')
   AGING_HOURS = OpenSpecSettings.get(O::ROOT, 'dispatch.aging_hours')
   # When each backlog item was first seen, for aging items that carry no queued_at.
@@ -780,6 +782,13 @@ class OpenSpecDispatcher
 
   # --------------------------------------------------------------------- agent
 
+  # One call may try every engine of its role, each 1 + limits.agent_retries times,
+  # each bounded by limits.agent_seconds (plus timeout's kill grace).
+  def agent_budget(engine)
+    attempts = [engine.to_s.split(',').size, 1].max * (AGENT_RETRIES + 1)
+    (attempts * (AGENT_TIMEOUT + 60)) + ((attempts - 1) * RETRY_DELAY) + 120
+  end
+
   def agent!(change, phase, prompt, wt, log, engine: nil)
     dir = File.join(O::WORKER_LOG_DIR, change)
     FileUtils.mkdir_p(dir)
@@ -788,8 +797,11 @@ class OpenSpecDispatcher
     started = Time.now
     cmd = ['bash', O::AGENT_EXEC, wt, prompt_file]
     cmd << engine if engine
-    res = O.run(cmd, chdir: wt, log: log, env: AGENT_ENV.merge(slot_env), timeout: AGENT_TIMEOUT + 120)
-    O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: engine || 'default')
+    res = O.run(cmd, chdir: wt, log: log, env: AGENT_ENV.merge(slot_env), timeout: agent_budget(engine))
+    # agent_exec.sh names each engine it tried; the last one is the one that ran (role fallbacks).
+    used = res.out.scan(/agent_exec: engine (\S+) exited \d+/).flatten.last || engine || 'default'
+    O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: used,
+                         engines: engine || 'default')
     raise O::Blocked.new('engine_unavailable', res.out) if res.code == 127
 
     # The agent's only escalation channel: a question a human must answer.

@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.8.1",
-  "source_commit": "032e140f29c1eaefcd4e7e66c0f88f9d9a2bcb25",
+  "version": "2.9.0",
+  "source_commit": "99db9fa9121746e08d9a81843d1324d49e3eab9a",
   "source_dirty": false,
-  "built_at": "2026-10-17T16:57:12Z",
+  "built_at": "2026-10-17T19:51:57Z",
   "toolchain": {
     "openspec": "1.14.2",
     "git": "2.56.0",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "8e73a809b4c2898df7521f3683f4c9b15656503635c4c955368b8ee42344b246"
+      "sha256": "4a98ea3ebd4c1ad882341d44cca6b27991814e5465d878292ecad563bb49232a"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -34,7 +34,7 @@
     },
     "README.md": {
       "class": "seed",
-      "sha256": "495a92dd77a16a88c4b1a3f8de963496910954eaff9e668e68f433625bff3351"
+      "sha256": "15ba4d1ced2affabed3c0dbba8d8195e139a4bd236423d83c99b93aac7d2dd12"
     },
     "ROADMAP.md": {
       "class": "seed",
@@ -46,7 +46,7 @@
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "ddb6b5539f8a02004ce122fdfa58bcbb5458c8ad68f065f5e0fafc7b61023e04"
+      "sha256": "60355ff0a4052f90ee935224323fb1f376f5e464f17288a286cfee3f19581055"
     },
     "bin/app_setup.rb": {
       "class": "kit",
@@ -54,7 +54,7 @@
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "54f34f767f923f51b788bec2ca5cc7f1925f43064d176e661d396b1210cce4da"
+      "sha256": "2051d2403f9fa11c89852847067d46eb7fc3199c70f9fd8a6065212287ee088b"
     },
     "bin/completed_since.sh": {
       "class": "kit",
@@ -70,11 +70,11 @@
     },
     "bin/cycle_status.sh": {
       "class": "kit",
-      "sha256": "c5b456888689b357f0361851a6aad06376d5b85ffccd76c00144925e53f0ab22"
+      "sha256": "6b63e5197954edd967df1d827133fbfee651f8084872beeb8932f3f1aa73b4b0"
     },
     "bin/install.sh": {
       "class": "kit",
-      "sha256": "0e4366a9284b3114de6faf8b2fce3112778103574086b74763ee2de7de4ad32c"
+      "sha256": "b756ce354ba87ceaf904dbd64411e67b2dc240b3788c7befef853e5fb753a474"
     },
     "bin/jev_contract.sh": {
       "class": "kit",
@@ -86,11 +86,11 @@
     },
     "bin/kit_config.rb": {
       "class": "kit",
-      "sha256": "41a7c14772a25a833a4c9cb08a72567077142d06a7174cd772ece891bb60a4b4"
+      "sha256": "0ea814a7a8c17f307b675ee23cd0e582f9899edb4606100566a24c7920e46c18"
     },
     "bin/lib/agents.rb": {
       "class": "kit",
-      "sha256": "55afc250b16352d23f2e899ff4d0c22e141163b1a958796c7c6a51a251c8b372"
+      "sha256": "adf6e00ad64717b7de92696206547cc8e436b2589c6aa477b5ad0602da2343df"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
@@ -102,15 +102,15 @@
     },
     "bin/lib/settings.rb": {
       "class": "kit",
-      "sha256": "0c0507afd50cce46f505ee87444d68d761d2d7e4233e7dc1c5b12d23f64cad04"
+      "sha256": "159a4d363e4d71fa6e732832581dd367ffad7e5a3fffdf1c6c7ed25e944007d6"
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "328590b5350cfbbffdf8cb3f448294a5c5a588b5b394b1d639cadb4cafe0959f"
+      "sha256": "79678b3d184dcb7364a875850b0f453eb7a7f9ea5c82446342d9c71ec9e7e589"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "ba0355773b6e8bd89b95a3c8796dd8b16e13b3632ea702b70ae33aa3241678b5"
+      "sha256": "c23379d0b3c851086eb34a00a7ba625b66a75ad254f2a75e4d3f7420e49e3319"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
@@ -126,7 +126,7 @@
     },
     "bin/run_cycle.sh": {
       "class": "kit",
-      "sha256": "af05cebcb2a7714b889dfd174436f6914a1f4e2d8f157363be035afbc0043bf3"
+      "sha256": "360662cf46b8e5328ee41763cc68e33b9d851d1b0c0f5470e9fa83cf181c95f6"
     },
     "bin/run_gates.sh": {
       "class": "kit",
@@ -154,7 +154,7 @@
     },
     "config/agents.yaml": {
       "class": "seed",
-      "sha256": "7df25b319193f8fbdd925f3162545460cc4fca05a939d7f08e8f401f6f2bbe8a"
+      "sha256": "c6a2460eabb21eaa75a2f0287b95b5c6a20a180cb22bfa36ed76ec06cc746457"
     },
     "config/cycle.yaml": {
       "class": "seed",
@@ -170,7 +170,7 @@
     },
     "config/pipeline.yaml": {
       "class": "seed",
-      "sha256": "0423e94816508e0f3976aaf8d7cfb9cc462e22f9ebe4139c107bf4436eddda5e"
+      "sha256": "5778e71543255d8f5e1a931b1fd6875a7914068e0e0a7a5bbd896fc12a8233d4"
     },
     "config/templates/authoring_rules.md": {
       "class": "kit",
@@ -286,11 +286,11 @@
     },
     "skills/openspec-kit-config/SKILL.md": {
       "class": "skill",
-      "sha256": "80a881d1976c3e29cf5777ceff868ed120998492b531b44e7f12ef3f53e04049"
+      "sha256": "bc143cee0bba8893a05985d5e6bc290187f1e750ac59ab11edbbc7de11e897fb"
     },
     "skills/openspec-kit-cycle/SKILL.md": {
       "class": "skill",
-      "sha256": "64d5e75422ffbbdec74a180cae57a20e85494aa5bd3488af6a9ebcd2f9d021e1"
+      "sha256": "fa0ce9b497471396e139432da1e77f55fc48fdb3fae2b91a2557feee75ea6478"
     },
     "skills/openspec-kit-cycle/references/report.template.md": {
       "class": "skill",

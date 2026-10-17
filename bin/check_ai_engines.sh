@@ -15,7 +15,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
-bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 90 "$@"; else "$@"; fi; }
+# A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes.
+bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 180 "$@"; else "$@"; fi; }
 AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized|No authentication information found"
 
 echo "== Toolchain ($(date -u +%Y-%m-%dT%H:%M:%SZ), $(uname -sm))"
@@ -40,9 +41,9 @@ echo "== Agent engines"
 SELECTED="$(ruby bin/lib/agents.rb list 2>/dev/null)"
 ROLES=""
 for role in plan build cycle; do
-  engine="$(ruby bin/lib/agents.rb engine "$role" 2>/dev/null)"
+  engine="$(ruby bin/lib/agents.rb engine "$role" 2>/dev/null)"   # claude,hermes: in order of preference
   ROLES="$ROLES $role:${engine:-first-available}"
-  [ -n "$SELECTED" ] && [ -n "$engine" ] && SELECTED="$SELECTED $engine"
+  [ -n "$SELECTED" ] && [ -n "$engine" ] && SELECTED="$SELECTED ${engine//,/ }"
 done
 SELECTED=" $SELECTED "
 WORKING=""
@@ -66,11 +67,19 @@ probe copilot  copilot -p "Reply with the single word: pong" --silent
 probe hermes   hermes -z "Reply with the single word: pong"
 probe opencode opencode run "Reply with the single word: pong"
 
-# Every role must run on a working engine (stub: the kit's own tests).
+# Every role must have a working engine among its list (stub: the kit's own tests).
+# agent_exec.sh falls back along the list, so a dead fallback is only a warning.
 ROLE_FAIL=""
 for pair in $ROLES; do
-  engine="${pair#*:}"
-  case "$engine" in first-available|stub) ;; *) [[ " $WORKING " == *" $engine "* ]] || ROLE_FAIL="$ROLE_FAIL $pair" ;; esac
+  role="${pair%%:*}"; list="${pair#*:}"
+  [ "$list" = first-available ] && continue
+  ok=""; down=""
+  for engine in ${list//,/ }; do
+    if [ "$engine" = stub ] || [[ " $WORKING " == *" $engine "* ]]; then ok="${ok:-$engine}"; else down="$down $engine"; fi
+  done
+  if [ -z "$ok" ]; then ROLE_FAIL="$ROLE_FAIL $pair"
+  elif [ -n "$down" ]; then echo "  $role: WARN runs on $ok; not working in its list:$down"
+  fi
 done
 echo "  roles:$ROLES"
 
@@ -122,7 +131,7 @@ echo "========================================================================"
 if [ "$MISSING" -eq 1 ]; then echo "preflight: FAIL (toolchain incomplete)"; exit 1; fi
 if [ "$KIT_OK" -eq 0 ]; then echo "preflight: FAIL (kit differs from .openspec-kit.lock: upgrade or reinstall it)"; exit 1; fi
 if [ -z "$WORKING" ]; then echo "preflight: FAIL (no working AI engine)"; exit 1; fi
-if [ -n "$ROLE_FAIL" ]; then echo "preflight: FAIL (the engine of a role is not working:$ROLE_FAIL)"; exit 1; fi
+if [ -n "$ROLE_FAIL" ]; then echo "preflight: FAIL (no engine of a role is working:$ROLE_FAIL)"; exit 1; fi
 if [ "$JUDGE" = invalid ]; then echo "preflight: FAIL (invalid Jev question files: a framework bug)"; exit 1; fi
 if [ "${JEV_REQUIRED:-0}" = 1 ] && [ "$JUDGE" != ok ]; then
   echo "preflight: FAIL (JEV_REQUIRED=1 and the judge is ${JUDGE})"; exit 1

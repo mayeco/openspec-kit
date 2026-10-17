@@ -24,11 +24,13 @@ module OpenSpecSettings
   KEYS = {
     'base_branch' => ['OPENSPEC_BASE_BRANCH', 'master'],
     'dispatch.workers' => ['OPENSPEC_WORKERS', 2],
-    'dispatch.wait_seconds' => ['OPENSPEC_WAIT_TIMEOUT', 1800],
+    'dispatch.wait_seconds' => ['OPENSPEC_WAIT_TIMEOUT', 3600],
     'dispatch.merge_interval_seconds' => ['OPENSPEC_MERGE_INTERVAL', 10],
     'dispatch.conflict_rebuilds' => ['OPENSPEC_CONFLICT_REBUILDS', 1],
     'dispatch.aging_hours' => ['OPENSPEC_AGING_HOURS', 6],
-    'limits.agent_seconds' => ['AGENT_TIMEOUT_SECONDS', 3600],
+    'limits.agent_seconds' => ['AGENT_TIMEOUT_SECONDS', 7200],
+    'limits.agent_retries' => ['AGENT_RETRIES', 1],
+    'limits.agent_retry_delay_seconds' => ['AGENT_RETRY_DELAY_SECONDS', 120],
     'limits.agent_budget_usd' => ['AGENT_MAX_BUDGET_USD', 5],
     'limits.gate_seconds' => ['OPENSPEC_GATE_TIMEOUT', 2700],
     'limits.lease_seconds' => ['OPENSPEC_LEASE_TTL', 7200]
@@ -36,7 +38,7 @@ module OpenSpecSettings
   # Amounts of money may have decimals; every other number is a whole one.
   DECIMAL = %w[limits.agent_budget_usd].freeze
   # Counts where 0 turns the behavior off; every other number must be above 0.
-  ZERO_OK = %w[dispatch.conflict_rebuilds dispatch.aging_hours].freeze
+  ZERO_OK = %w[dispatch.conflict_rebuilds dispatch.aging_hours limits.agent_retries limits.agent_retry_delay_seconds].freeze
   BRANCH = %r{\A[A-Za-z0-9._/-]+\z}
 
   class Error < StandardError; end

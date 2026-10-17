@@ -2,11 +2,17 @@
 # ==============================================================================
 # bin/agent_exec.sh - Engine-agnostic headless agent adapter
 # ==============================================================================
-# Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine]
+# Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine[,engine...]]
 #
 # Engines: claude, codex, copilot, hermes, opencode, and stub for the kit's tests.
-# Callers pass the engine of their role from config/agents.yaml (bin/lib/agents.rb);
-# without one it is $AGENT_ENGINE, then the first engine found on PATH. Every
+# Callers pass the engines of their role from config/agents.yaml (bin/lib/agents.rb),
+# in order; without them it is $AGENT_ENGINE, then the first engine found on PATH.
+# Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
+# logged in, timed out) is tried again limits.agent_retries times
+# (config/pipeline.yaml), then the next engine runs; one that is not installed is
+# skipped at once. An attempt that left changes in the work directory is followed by
+# one told, in its prompt, who stopped and what is there, to continue from that state.
+# The caller verifies the result as always. Every
 # invocation is bounded by a wall-clock timeout, limits.agent_seconds of
 # config/pipeline.yaml (bin/lib/settings.rb). The exit code is the engine's
 # exit code (124 = timeout). What agents may do is `permissions` in
@@ -22,10 +28,10 @@ SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
 LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
 PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
 
-ENGINE="${3:-${AGENT_ENGINE:-}}"
-if [ -z "$ENGINE" ]; then
+ENGINES="${3:-${AGENT_ENGINE:-}}"
+if [ -z "$ENGINES" ]; then
   for candidate in claude codex copilot hermes opencode; do
-    if command -v "$candidate" >/dev/null 2>&1; then ENGINE="$candidate"; break; fi
+    if command -v "$candidate" >/dev/null 2>&1; then ENGINES="$candidate"; break; fi
   done
 fi
 
@@ -48,6 +54,7 @@ bounded() {
     wait "$TIMEOUT_PID" && rc=0 || rc=$?
     kill -0 "$TIMEOUT_PID" 2>/dev/null || break
   done
+  trap - INT TERM # a signal during a retry's wait stops this script
   return "$rc"
 }
 
@@ -64,47 +71,127 @@ CLAUDE_DENIED="${CLAUDE_DISALLOWED_TOOLS:-Bash(git commit *) Bash(git push *) Ba
 # Copilot needs --allow-all-tools to run headless; deny rules take precedence over it.
 COPILOT_DENIED="${COPILOT_DENIED_TOOLS:-shell(git commit),shell(git push),shell(git rebase),shell(git reset),shell(git checkout),shell(git switch)}"
 
+# What the work directory holds, child repositories included; log/ and other ignored
+# files do not count. An engine that leaves it unchanged did no work.
+tree_state() {
+  { git status --porcelain=v1 --untracked-files=all 2>/dev/null
+    git diff HEAD 2>/dev/null
+    git submodule foreach --quiet --recursive 'git status --porcelain=v1 --untracked-files=all; git diff HEAD' 2>/dev/null
+    true # outside a git checkout every command above fails; the state is then constant
+  } | cksum
+}
+
+# What a failed attempt left, for the next one: every changed path and the size of each change.
+changes_left() {
+  { git status --short --untracked-files=all 2>/dev/null
+    git submodule foreach --quiet --recursive 'git status --short --untracked-files=all | sed "s#^#$displaypath: #"' 2>/dev/null
+    git diff --stat HEAD 2>/dev/null
+    git submodule foreach --quiet --recursive 'git diff --stat HEAD | sed "s#^#$displaypath: #"' 2>/dev/null
+    true
+  } | head -n 120
+}
+
+continuation_note() { # <who stopped, and how>
+  cat <<NOTE
+
+## A previous attempt stopped before finishing
+
+$1 worked on this same task and stopped. The work directory keeps what it changed:
+
+\`\`\`
+$(changes_left)
+\`\`\`
+
+Continue from this state instead of starting over: read the changes (git diff, and inside each
+repository under repos/), keep what is right, fix what is wrong and finish the rest.
+NOTE
+}
+
+run_engine() { # <engine>
+  local ENGINE="$1"
+  if [ "$ENGINE" != stub ] && ! command -v "$ENGINE" >/dev/null 2>&1; then
+    echo "agent_exec: $ENGINE is not installed" >&2
+    return 127
+  fi
+  case "$ENGINE" in
+    claude)
+      if [ "$PERMISSIONS" = restricted ]; then
+        MODE=(--permission-mode acceptEdits --allowedTools "$CLAUDE_ALLOWED")
+      else
+        MODE=(--permission-mode bypassPermissions)
+      fi
+      bounded claude -p "$PROMPT" \
+        --output-format json \
+        "${MODE[@]}" \
+        --disallowedTools "$CLAUDE_DENIED" \
+        --max-budget-usd "$(ruby "$SETTINGS" get limits.agent_budget_usd)" \
+        --no-session-persistence
+      ;;
+    hermes)
+      # --yolo disables approval prompts: run inside a sandbox/container only.
+      bounded hermes -z "$PROMPT" --yolo --accept-hooks
+      ;;
+    opencode)
+      bounded opencode run --format json "$PROMPT"
+      ;;
+    codex)
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded codex exec --full-auto "$PROMPT"
+      else
+        bounded codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
+      fi
+      ;;
+    copilot)
+      DENY=()
+      IFS=',' read -ra RULES <<< "$COPILOT_DENIED"
+      for rule in "${RULES[@]}"; do DENY+=(--deny-tool "$rule"); done
+      bounded copilot -p "$PROMPT" --silent --allow-all-tools "${DENY[@]}"
+      ;;
+    stub)
+      # Deterministic fake agent for the orchestrator's own tests.
+      bounded bash "${AGENT_STUB:?AGENT_STUB must point to a stub script}" "$RUN_PROMPT_FILE"
+      ;;
+    *)
+      echo "agent_exec: unknown engine ${ENGINE:-none} (set AGENT_ENGINE)" >&2
+      return 127
+      ;;
+  esac
+}
+
 cd "$WORKDIR"
-case "$ENGINE" in
-  claude)
-    if [ "$PERMISSIONS" = restricted ]; then
-      MODE=(--permission-mode acceptEdits --allowedTools "$CLAUDE_ALLOWED")
-    else
-      MODE=(--permission-mode bypassPermissions)
+[ -n "$ENGINES" ] || { echo "agent_exec: no AI engine available (set AGENT_ENGINE)" >&2; exit 127; }
+IFS=',' read -ra LIST <<< "$ENGINES"
+RETRIES="$(ruby "$SETTINGS" get limits.agent_retries)"
+RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
+BASE_PROMPT="$PROMPT"
+RUN_PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-prompt.XXXXXX")" # the stub reads its prompt from a file
+trap 'rm -f "$RUN_PROMPT_FILE"' EXIT
+START="$(tree_state)"
+rc=127
+for i in "${!LIST[@]}"; do
+  engine="$(printf '%s' "${LIST[$i]}" | tr -d '[:space:]')"
+  [ -n "$engine" ] || continue
+  try=0
+  while :; do
+    printf '%s' "$PROMPT" > "$RUN_PROMPT_FILE"
+    rc=0
+    run_engine "$engine" || rc=$?
+    # Parsed by the dispatcher for its agent.exit event.
+    echo "agent_exec: engine $engine exited $rc" >&2
+    [ "$rc" -eq 0 ] && exit 0
+    [ "$rc" -eq 127 ] && break # not installed or unknown: no point trying it again
+    if [ "$(tree_state)" != "$START" ]; then
+      reason="exit $rc"
+      [ "$rc" -eq 124 ] && reason="it hit the time limit"
+      PROMPT="$BASE_PROMPT
+$(continuation_note "$engine ($reason)")"
     fi
-    bounded claude -p "$PROMPT" \
-      --output-format json \
-      "${MODE[@]}" \
-      --disallowedTools "$CLAUDE_DENIED" \
-      --max-budget-usd "$(ruby "$SETTINGS" get limits.agent_budget_usd)" \
-      --no-session-persistence
-    ;;
-  hermes)
-    # --yolo disables approval prompts: run inside a sandbox/container only.
-    bounded hermes -z "$PROMPT" --yolo --accept-hooks
-    ;;
-  opencode)
-    bounded opencode run --format json "$PROMPT"
-    ;;
-  codex)
-    if [ "$PERMISSIONS" = restricted ]; then
-      bounded codex exec --full-auto "$PROMPT"
-    else
-      bounded codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
-    fi
-    ;;
-  copilot)
-    DENY=()
-    IFS=',' read -ra RULES <<< "$COPILOT_DENIED"
-    for rule in "${RULES[@]}"; do DENY+=(--deny-tool "$rule"); done
-    bounded copilot -p "$PROMPT" --silent --allow-all-tools "${DENY[@]}"
-    ;;
-  stub)
-    # Deterministic fake agent for the orchestrator's own tests.
-    bounded bash "${AGENT_STUB:?AGENT_STUB must point to a stub script}" "$PROMPT_FILE"
-    ;;
-  *)
-    echo "agent_exec: no AI engine available (set AGENT_ENGINE)" >&2
-    exit 127
-    ;;
-esac
+    try=$((try + 1))
+    [ "$try" -gt "$RETRIES" ] && break
+    echo "agent_exec: trying $engine again ($try of $RETRIES) in ${RETRY_DELAY}s" >&2
+    sleep "$RETRY_DELAY"
+  done
+  next="${LIST[$((i + 1))]:-}"
+  [ -n "$next" ] && echo "agent_exec: $engine failed (exit $rc); trying $next" >&2
+done
+exit "$rc"

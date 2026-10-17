@@ -3,18 +3,18 @@
 # bin/install.sh - Install, upgrade or verify the OpenSpec orchestration kit
 # ==============================================================================
 # From a checkout of the release tag you want (it holds MANIFEST.json):
-#   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A --build A --cycle A]
-#   bin/install.sh upgrade <app-dir> [--agents LIST --plan A --build A --cycle A] [--force]
+#   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]]
+#   bin/install.sh upgrade <app-dir> [--agents LIST --plan A[,B] ...] [--force]
 #   bin/install.sh verify <app-dir>
 # Inside an application, where it arrives with the rest of bin/, only
 # `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
 #
 # Agents: claude, codex, copilot, hermes, opencode. init installs the kit (bin/,
 # config/templates/) and its skills in .agents/skills/, the directory agents
-# share, plus a copy for each other selected agent. It records the agents, and the one
-# that runs each role (plan, build, cycle), in config/agents.yaml, which the
-# scripts read. With one agent it runs every role; with more, a role not given
-# as an option is asked. init also creates the files the application owns from
+# share, plus a copy for each other selected agent. It records the agents and, per role
+# (plan, build, cycle), the agent that runs it or several in order of preference
+# (--build claude,hermes: hermes runs when claude fails), in config/agents.yaml. With
+# more than one agent, a role not given as an option is asked. init also creates the files the application owns from
 # then on (README.md, ROADMAP.md, MEMORY.md, config/*.yaml, config/*.json),
 # runs `openspec init` for the selected agents and writes .openspec-kit.lock.
 # Fill the {{...}} placeholders, add repos/, commit, then schedule the cycle and
