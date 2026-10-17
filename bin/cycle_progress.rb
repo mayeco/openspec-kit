@@ -22,6 +22,7 @@ require 'open3'
 require 'optparse'
 require 'time'
 require 'yaml'
+require_relative 'lib/settings'
 
 Encoding.default_external = Encoding::UTF_8
 
@@ -132,7 +133,7 @@ module CycleProgress
   # first), else the checkout itself.
   def base_ref
     @base_ref ||= begin
-      base = "origin/#{ENV.fetch('OPENSPEC_BASE_BRANCH', 'master')}"
+      base = "origin/#{OpenSpecSettings.get(ROOT, 'base_branch')}"
       git('rev-parse', '--verify', '--quiet', base).empty? ? 'HEAD' : base
     end
   end

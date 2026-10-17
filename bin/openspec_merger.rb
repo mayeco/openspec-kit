@@ -24,7 +24,7 @@ class OpenSpecMerger
   # between changes, never mid-integration. Any other merger ignores it.
   STOP_FILE = File.join(O::LOG_DIR, 'merger.stop')
   MAX_ATTEMPTS = 3
-  GATE_TIMEOUT = Integer(ENV.fetch('OPENSPEC_GATE_TIMEOUT', '2700'))
+  GATE_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.gate_seconds') # config/pipeline.yaml
   # Child-repo paths a worker must not change on its own: they define the gates
   # that judge the worker. Changes here need a human (framework lane).
   PROTECTED_CHILD_PATHS = ENV.fetch('OPENSPEC_PROTECTED_PATHS', 'repo.config.yaml .github .gitlab-ci.yml').split
@@ -309,11 +309,11 @@ class OpenSpecMerger
 end
 
 if __FILE__ == $PROGRAM_NAME
-  options = { watch: false, interval: 30 }
+  options = { watch: false, interval: OpenSpecSettings.get(OpenSpecOrchestrator::ROOT, 'dispatch.merge_interval_seconds') }
   OptionParser.new do |opts|
     opts.banner = 'Usage: ruby bin/openspec_merger.rb [--watch [--interval SECONDS]]'
     opts.on('--watch', 'Keep polling the ready queue') { options[:watch] = true }
-    opts.on('--interval SECONDS', Integer, 'Polling interval (default: 30)') { |v| options[:interval] = v }
+    opts.on('--interval SECONDS', Integer, 'Polling interval (default: dispatch.merge_interval_seconds of config/pipeline.yaml)') { |v| options[:interval] = v }
   end.parse!
   OpenSpecMerger.new.run(**options)
 end

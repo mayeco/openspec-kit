@@ -15,6 +15,7 @@ require 'socket'
 require 'time'
 require 'tmpdir'
 require 'yaml'
+require_relative 'settings'
 
 # launchd and cron start without LANG, so Ruby would tag subprocess output as
 # US-ASCII and JSON.parse would raise on the UTF-8 that openspec and jev print.
@@ -22,7 +23,8 @@ Encoding.default_external = Encoding::UTF_8
 
 module OpenSpecOrchestrator
   ROOT = File.expand_path('../..', __dir__)
-  BASE_BRANCH = ENV.fetch('OPENSPEC_BASE_BRANCH', 'master')
+  # base_branch and limits.lease_seconds of config/pipeline.yaml (bin/lib/settings.rb).
+  BASE_BRANCH = OpenSpecSettings.get(ROOT, 'base_branch')
   REMOTE = ENV.fetch('OPENSPEC_REMOTE', 'origin')
   WORKTREE_BASE = File.expand_path(ENV.fetch('OPENSPEC_WORKTREE_BASE', '.worktrees'), ROOT)
   LOG_DIR = File.join(ROOT, 'log')
@@ -35,7 +37,7 @@ module OpenSpecOrchestrator
   PAUSE_FILE = File.join(LOG_DIR, 'PAUSE')
   BACKLOG_FILE = File.join(ROOT, 'config', 'agent_backlog.json')
   AGENT_EXEC = File.join(ROOT, 'bin', 'agent_exec.sh')
-  LEASE_TTL_SECONDS = Integer(ENV.fetch('OPENSPEC_LEASE_TTL', '7200'))
+  LEASE_TTL_SECONDS = OpenSpecSettings.get(ROOT, 'limits.lease_seconds')
   CHANGE_NAME = /\A[a-z0-9][a-z0-9-]{0,62}\z/
 
   # Raised to quarantine a change. The reason is one of the blocker taxonomy codes.

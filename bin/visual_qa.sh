@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
 export GIT_TERMINAL_PROMPT=0
-BASE="${OPENSPEC_BASE_BRANCH:-master}"
+BASE="$(ruby "$ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.yaml
 LOG_DIR="$ROOT/log"
 CYCLE_DIR="$LOG_DIR/cycle"
 LOCK="$LOG_DIR/visual_qa.lock"

@@ -15,22 +15,25 @@ Two scheduled jobs keep an application moving. Both run from the application's r
 | Visual QA task | `.agents/skills/openspec-kit-visual-qa/references/routine-prompt.md` | The Claude or Hermes app task of the visual QA session |
 | The judgment's own prompt | `config/templates/cycle_prompt.md`, plus "This cycle", rendered into `log/cycle/prompt-<stamp>.md` | `bin/run_cycle.sh`, for the headless judgment agent. **Never schedule it**: the script writes it each cycle |
 
-The same files are in the skills directory of every selected agent (`.claude/skills/`, `.github/skills/`, ...). Copy the prompts as they are and never add settings to them: the scripts read every setting from `config/` (`config/agents.yaml`, `config/cycle.yaml`, `config/exploration.yaml`, `config/jev_policy.yaml`).
+The same files are in the skills directory of every selected agent (`.claude/skills/`, `.github/skills/`, ...). Copy the prompts as they are and never add settings to them, nor to a crontab line: the scripts read every setting from `config/` (`config/agents.yaml`, `config/pipeline.yaml`, `config/cycle.yaml`, `config/exploration.yaml`, `config/jev_policy.yaml`).
 
 ## Before you schedule
 
-1. Install the kit and commit the application ([INSTALL.md](INSTALL.md)).
-2. Run the preflight; it must end with `preflight: OK`:
+1. Install the kit, set the application up and commit it ([INSTALL.md](INSTALL.md)); `ruby bin/app_setup.rb status` must have nothing left but the schedules, and prints this application's crontab line.
+2. Check the application's base branch, `base_branch` in `config/pipeline.yaml` (`master` by default). If it is another one, set it and commit:
+   ```bash
+   ruby bin/kit_config.rb set pipeline.base_branch main
+   ```
+3. Run the preflight; it must end with `preflight: OK`:
    ```bash
    bash bin/check_ai_engines.sh
    ```
-3. Run one cycle by hand and watch it, then look at the state:
+4. Run one cycle by hand and watch it, then look at the state:
    ```bash
    bash bin/run_cycle.sh
    bash bin/cycle_status.sh
    ```
-4. Check `roles.cycle` in `config/agents.yaml` (who judges) and `visual_qa.enabled` in `config/cycle.yaml` (on by default).
-5. If the application's base branch is not `master`, every scheduled command needs `OPENSPEC_BASE_BRANCH=<branch>` in front of it (shown below as `OPENSPEC_BASE_BRANCH=main`).
+5. Check `roles.cycle` in `config/agents.yaml` (who judges) and `visual_qa.enabled` in `config/cycle.yaml` (on by default): `ruby bin/kit_config.rb show`.
 
 ## 1. The cycle with crontab (recommended)
 
@@ -40,7 +43,7 @@ The same files are in the skills directory of every selected agent (`.claude/ski
    ```
 2. Add one line (every hour, at minute 0):
    ```text
-   0 * * * * cd /path/to/xyz && mkdir -p log/cycle && OPENSPEC_BASE_BRANCH=main /bin/bash bin/run_cycle.sh --detach >> log/cycle/cron.log 2>&1
+   0 * * * * cd /path/to/xyz && mkdir -p log/cycle && /bin/bash bin/run_cycle.sh --detach >> log/cycle/cron.log 2>&1
    ```
 3. Save, then check that it is there:
    ```bash
@@ -54,6 +57,7 @@ The same files are in the skills directory of every selected agent (`.claude/ski
 
 Notes:
 - The script fixes `PATH` itself (`OPENSPEC_PATH_PREFIX`, default `/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin`) and runs without a locale, so cron's minimal environment is enough. Each agent CLI must already be logged in for your user.
+- `ruby bin/app_setup.rb status` prints this line with the application's real path.
 - `--detach` returns at once; the cycle runs in its own session and writes `log/cycle/cycle-<stamp>.log`. A cycle that fires while another one judges prints `cycle: already running` and exits.
 - **macOS**: if the application lives under `~/Documents`, `~/Desktop`, `~/Downloads` or iCloud Drive, give `/usr/sbin/cron` **Full Disk Access** (System Settings › Privacy & Security). Cron does not run while the computer sleeps.
 
@@ -70,7 +74,7 @@ launchd runs a job missed during sleep at wake-up. Save as `~/Library/LaunchAgen
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string><string>-c</string>
-    <string>cd /path/to/xyz &amp;&amp; mkdir -p log/cycle &amp;&amp; OPENSPEC_BASE_BRANCH=main /bin/bash bin/run_cycle.sh --detach &gt;&gt; log/cycle/cron.log 2&gt;&amp;1</string>
+    <string>cd /path/to/xyz &amp;&amp; mkdir -p log/cycle &amp;&amp; /bin/bash bin/run_cycle.sh --detach &gt;&gt; log/cycle/cron.log 2&gt;&amp;1</string>
   </array>
   <key>StartCalendarInterval</key><dict><key>Minute</key><integer>0</integer></dict>
 </dict>
@@ -104,7 +108,7 @@ Option A, no model call: Hermes runs a script on schedule.
 1. Create `~/.hermes/scripts/xyz-cycle.sh`:
    ```bash
    #!/usr/bin/env bash
-   cd /path/to/xyz && mkdir -p log/cycle && OPENSPEC_BASE_BRANCH=main bash bin/run_cycle.sh --detach
+   cd /path/to/xyz && mkdir -p log/cycle && bash bin/run_cycle.sh --detach
    ```
 2. Schedule it:
    ```bash
@@ -158,7 +162,8 @@ OpenCode has no scheduler and no browser of its own. It can run the session from
 | Read a cycle | `log/cycle/cycle-<stamp>.log`; its report in `log/cycle/reports/`; its prompt in `log/cycle/prompt-<stamp>.md` |
 | Read a visual session | `log/cycle/visual-<stamp>.md` (plan), `log/cycle/reports/visual-<stamp>.md` (report), `ruby bin/visual_qa.rb status` |
 | Pause everything | `echo "reason" > log/PAUSE`; resume with `rm log/PAUSE` |
-| Turn the visual session off | `visual_qa.enabled: false` in `config/cycle.yaml` |
+| Change a setting | Ask your agent (the `openspec-kit-config` skill), or `ruby bin/kit_config.rb set <file>.<key> <value>`; commit and push it before the next cycle |
+| Turn the visual session off | `ruby bin/kit_config.rb set cycle.visual_qa.enabled false` |
 | Stop a crontab job | `crontab -e` and delete the line |
 | Stop a Hermes job | `hermes cron list`, then `hermes cron pause <job>` or `hermes cron remove <job>` |
 | Stop a Claude app task | Disable or delete it in the app's Scheduled tasks |
@@ -173,4 +178,6 @@ OpenCode has no scheduler and no browser of its own. It can run the session from
 | `preflight: FAIL (...)` | An agent CLI is not logged in, a kit file was edited (`bash bin/install.sh verify`), or a tool is missing |
 | `visual-qa: a cycle is judging` | The visual session starts at its next run. Normal |
 | `visual-qa: disabled` | `visual_qa.enabled` is not `true` in `config/cycle.yaml` |
+| `scope violation` in `log/PAUSE` | A file besides `MEMORY.md`, the backlog and the proposals was uncommitted while a cycle or visual session ran (often a setting edited by hand): commit it, then `rm log/PAUSE` |
+| `couldn't find remote ref master` in a cycle's log | `base_branch` in `config/pipeline.yaml` is not the application's branch: `ruby bin/kit_config.rb set pipeline.base_branch <branch>`, commit, push |
 | Nothing in `log/cycle/cron.log` | cron does not fire: check `crontab -l`, Full Disk Access on macOS, and the path in the line |

@@ -1,0 +1,24 @@
+# ==============================================================================
+# config/pipeline.yaml - How the pipeline runs: base branch, parallelism, limits
+# ==============================================================================
+# Seed: created once by install.sh, then owned by this application. Humans edit
+# it (ruby bin/kit_config.rb set pipeline.<key> <value>); the dispatcher, the
+# merger, the cycle and the visual QA session read it on every run, so a
+# scheduled command never carries a setting. The environment variable named
+# after each key overrides it for one manual run only.
+
+# The branch of this repository that every change starts from and the merger
+# publishes to, on origin. Each child repository names its own base branch in
+# its repo.config.yaml.
+base_branch: master # OPENSPEC_BASE_BRANCH
+
+dispatch:
+  workers: 2 # changes one dispatch builds in parallel; OPENSPEC_WORKERS
+  wait_seconds: 1800 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
+  merge_interval_seconds: 10 # how often a watching merger looks for ready changes; OPENSPEC_MERGE_INTERVAL
+
+limits:
+  agent_seconds: 3600 # one agent call; AGENT_TIMEOUT_SECONDS
+  agent_budget_usd: 5 # Claude Code's spending cap per call; AGENT_MAX_BUDGET_USD
+  gate_seconds: 2700 # one repository's gates, in the dispatcher and the merger; OPENSPEC_GATE_TIMEOUT
+  lease_seconds: 7200 # a change's lease is stale after this; OPENSPEC_LEASE_TTL

@@ -7,7 +7,8 @@
 # Engines: claude, codex, copilot, hermes, opencode, and stub for the kit's tests.
 # Callers pass the engine of their role from config/agents.yaml (bin/lib/agents.rb);
 # without one it is $AGENT_ENGINE, then the first engine found on PATH. Every
-# invocation is bounded by a wall-clock timeout. The exit code is the engine's
+# invocation is bounded by a wall-clock timeout, limits.agent_seconds of
+# config/pipeline.yaml (bin/lib/settings.rb). The exit code is the engine's
 # exit code (124 = timeout). What agents may do is `permissions` in
 # config/agents.yaml (or $AGENT_PERMISSIONS): all, the default, or restricted.
 # Callers MUST NOT trust the agent's own success claim: verify post-conditions
@@ -17,7 +18,8 @@ set -euo pipefail
 WORKDIR="${1:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT_FILE="${2:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT="$(cat "$PROMPT_FILE")"
-LIMIT="${AGENT_TIMEOUT_SECONDS:-3600}"
+SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
+LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
 PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
 
 ENGINE="${3:-${AGENT_ENGINE:-}}"
@@ -74,7 +76,7 @@ case "$ENGINE" in
       --output-format json \
       "${MODE[@]}" \
       --disallowedTools "$CLAUDE_DENIED" \
-      --max-budget-usd "${AGENT_MAX_BUDGET_USD:-5}" \
+      --max-budget-usd "$(ruby "$SETTINGS" get limits.agent_budget_usd)" \
       --no-session-persistence
     ;;
   hermes)

@@ -22,9 +22,11 @@ class OpenSpecDispatcher
   PRIORITY = { 'critical' => 0, 'high' => 1, 'normal' => 2, 'low' => 3 }.freeze
   POLL_SECONDS = 2
   FETCH_EVERY_SECONDS = 30
-  DEFAULT_WAIT_TIMEOUT = Integer(ENV.fetch('OPENSPEC_WAIT_TIMEOUT', '1800'))
-  GATE_TIMEOUT = Integer(ENV.fetch('OPENSPEC_GATE_TIMEOUT', '2700'))
-  AGENT_TIMEOUT = Integer(ENV.fetch('AGENT_TIMEOUT_SECONDS', '3600'))
+  # config/pipeline.yaml (bin/lib/settings.rb), read once per run.
+  WORKERS = OpenSpecSettings.get(O::ROOT, 'dispatch.workers')
+  DEFAULT_WAIT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'dispatch.wait_seconds')
+  GATE_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.gate_seconds')
+  AGENT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.agent_seconds')
   # The engine of each phase: its role in config/agents.yaml, unless an AGENT_ENGINE* variable overrides it.
   ENGINE_PLAN = OpenSpecAgents.engine(O::ROOT, 'plan')
   ENGINE_BUILD = OpenSpecAgents.engine(O::ROOT, 'build')
@@ -698,19 +700,19 @@ end
 
 if __FILE__ == $PROGRAM_NAME
   options = {
-    max_workers: 2, repair_attempts: 2, backlog_file: OpenSpecOrchestrator::BACKLOG_FILE,
+    max_workers: OpenSpecDispatcher::WORKERS, repair_attempts: 2, backlog_file: OpenSpecOrchestrator::BACKLOG_FILE,
     wait: nil, dry_run: false,
     engine_plan: OpenSpecDispatcher::ENGINE_PLAN,
     engine_build: OpenSpecDispatcher::ENGINE_BUILD
   }
   OptionParser.new do |opts|
     opts.banner = 'Usage: ruby bin/openspec_dispatcher.rb [options]'
-    opts.on('-w', '--workers COUNT', Integer, 'Max concurrent workers (default: 2)') { |v| options[:max_workers] = v }
+    opts.on('-w', '--workers COUNT', Integer, 'Max concurrent workers (default: dispatch.workers of config/pipeline.yaml)') { |v| options[:max_workers] = v }
     opts.on('-r', '--repairs COUNT', Integer, 'Repair attempts per phase (default: 2)') { |v| options[:repair_attempts] = v }
     opts.on('-q', '--queue PATH', 'Backlog JSON (default: config/agent_backlog.json)') { |v| options[:backlog_file] = File.expand_path(v) }
     opts.on('--engine-plan ENGINE', 'Engine for PLAN phase (default: roles.plan in config/agents.yaml)') { |v| options[:engine_plan] = v }
     opts.on('--engine-build ENGINE', 'Engine for BUILD phase (default: roles.build in config/agents.yaml)') { |v| options[:engine_build] = v }
-    opts.on('--wait [SECONDS]', Integer, 'Wait up to SECONDS (default: 1800) while changes wait on merges') do |v|
+    opts.on('--wait [SECONDS]', Integer, 'Wait up to SECONDS (default: dispatch.wait_seconds) while changes wait on merges') do |v|
       options[:wait] = v || OpenSpecDispatcher::DEFAULT_WAIT_TIMEOUT
     end
     opts.on('--dry-run', 'Print eligible changes and exit') { options[:dry_run] = true }

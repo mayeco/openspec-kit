@@ -122,5 +122,5 @@ Jev is a calibrated judge: it answers a typed question with a probability, never
 - **Unblock a change**: read `log/blocked/<change>.json` and `log/workers/<change>.log`. Fix the cause in `.worktrees/worker-<change>` (OpenSpec artifacts) or on `feat/spec-<change>` inside the child repository (code), delete `.needs-human` if present, then `rm log/blocked/<change>.json`. The next dispatcher run resumes the change.
 - **Approve a `risk_review`**: review the diff, `touch log/approved/<change>`, then `rm log/blocked/<change>.json`.
 - **Abandon a change**: `git worktree remove --force .worktrees/worker-<change>`, `git branch -D feat/spec-<change>`, `rm log/blocked/<change>.json`, and remove its item from `config/agent_backlog.json`.
-- **Tune**: `config/cycle.yaml` (budget, caps, roadmap, approval, QA skills), `config/exploration.yaml` and `config/jev_policy.yaml`.
+- **Tune**: `config/cycle.yaml` (budget, caps, roadmap, approval, QA skills), `config/pipeline.yaml` (base branch, workers, limits), `config/exploration.yaml` and `config/jev_policy.yaml`. The `openspec-kit-config` skill explains every setting and changes one safely (`ruby bin/kit_config.rb show`, `check`, `set`).
 - **Start over**: delete `log/cycle/state.json` (and `log/cycle/strategy_state.json` to restart the rotation); the next cycle recreates it from the template.

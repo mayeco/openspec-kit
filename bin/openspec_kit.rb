@@ -227,9 +227,10 @@ module OpenSpecKit
     puts "kit: installed v#{manifest['version']} into #{target} " \
          "(#{plan.size} kit files, #{seeded.size} seeds created)"
     puts "agents: #{describe(agents, roles)}, in #{OpenSpecAgents::CONFIG}"
-    puts 'next: fill the {{...}} placeholders in README.md and ROADMAP.md, describe the project in ' \
-         'openspec/config.yaml, add child repos under repos/, commit, then schedule the cycle (crontab) ' \
-         'and the visual QA session (an agent app with a browser) as SCHEDULING.md describes; INSTALL.md has the rest'
+    puts 'next: ask your agent to set the application up (the openspec-kit-init skill; ruby bin/app_setup.rb status ' \
+         'lists what is left): fill README.md and ROADMAP.md, describe the project in openspec/config.yaml, add child ' \
+         'repos under repos/, commit, then schedule the cycle (crontab) and the visual QA session (an agent app with ' \
+         'a browser) as SCHEDULING.md describes; INSTALL.md has the rest'
   end
 
   def upgrade(source, target, agents:, roles:, force:)

@@ -14,7 +14,7 @@
 # following the openspec-kit-cycle skill through the prompt the script renders.
 # The scheduled task always runs the same command: every setting, the engines
 # included, is read here from config/ (config/agents.yaml, config/cycle.yaml,
-# config/exploration.yaml).
+# config/exploration.yaml, config/pipeline.yaml).
 #
 # Two locks: log/cycle.lock covers the judgment, from preflight to record, and
 # log/dispatch.lock covers a dispatch. A dispatch can take hours; the cycle lock
@@ -33,7 +33,7 @@ cd "$ROOT" || exit 1
 # Schedulers start with a minimal PATH: Homebrew, ~/.local/bin and Ruby shims are missing.
 export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
 export CI=1 NONINTERACTIVE=1 GIT_TERMINAL_PROMPT=0
-BASE="${OPENSPEC_BASE_BRANCH:-master}"
+BASE="$(ruby "$ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.yaml
 LOG_DIR="$ROOT/log"
 CYCLE_DIR="$LOG_DIR/cycle"            # state.json, reports/, prompts and one log per cycle (git-ignored)
 LOCK="$LOG_DIR/cycle.lock"            # directories: mkdir is atomic everywhere (macOS has no flock(1))
@@ -144,10 +144,11 @@ fi
 # dispatcher has finished, log/merger.stop makes it drain the queue and exit
 # between changes. A merger the operator runs as a service is left alone.
 if ! merger_running; then
-  ruby bin/openspec_merger.rb --watch --interval "${OPENSPEC_MERGE_INTERVAL:-10}" &
+  ruby bin/openspec_merger.rb --watch &
   MERGER=$!
 fi
-ruby bin/openspec_dispatcher.rb --workers "${OPENSPEC_WORKERS:-2}" --wait "${OPENSPEC_WAIT_TIMEOUT:-1800}"
+# Workers, waiting and the merger's interval come from config/pipeline.yaml.
+ruby bin/openspec_dispatcher.rb --wait
 if [ -n "$MERGER" ]; then
   echo "$MERGER" > "$LOG_DIR/merger.stop"
   wait "$MERGER"
