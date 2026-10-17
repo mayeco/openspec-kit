@@ -3,8 +3,15 @@ name: "{{REPO_NAME}}"            # e.g. "backend", "frontend", "infra"
 stack: "{{TECH_STACK}}"          # e.g. "python-fastapi", "nextjs-typescript", "go", "rails"
 base_branch: "{{BASE_BRANCH}}"   # the branch the merger pushes to, e.g. "main"
 
+# Optional: a script of this repository, sourced from its root before each of its commands
+# (the gates below, the dev command, and `bash bin/repo_exec.sh <repo> <command>`). It
+# activates the toolchain the repository pins (Ruby, Node, Python versions, gemsets) and
+# exports what its commands need. Start from config/repo_env.template.sh of the umbrella.
+# Agents may not change it: the merger blocks a change that does. Empty: plain shell.
+env_script: ""                  # e.g. "script/env.sh"
+
 service:
-  dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev", "uvicorn app.main:app --reload"
+  dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev"; run it with bash bin/repo_exec.sh <repo> <dev_command>
   port: "{{DEV_PORT}}"                   # quoted: an unquoted {{...}} is invalid YAML
   health_endpoint: "{{HEALTH_ENDPOINT}}" # e.g. "http://localhost:3000/up"
 

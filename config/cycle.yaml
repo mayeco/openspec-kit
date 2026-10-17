@@ -2,8 +2,10 @@
 # config/cycle.yaml - Settings of the scheduled cycle
 # ==============================================================================
 # Seed: created once by install.sh, then owned by this application. Humans edit
-# it; the cycle only reads it. The cycle's state and reports are runtime files
-# under log/cycle/ (git-ignored); durable lessons go to MEMORY.md.
+# it; the scripts read it and write the cycle's plan into the judgment agent's
+# prompt, so the scheduled task's prompt never changes. The cycle's state and
+# reports are runtime files under log/cycle/ (git-ignored); durable lessons go to
+# MEMORY.md.
 
 # Minutes the cycle agent may spend verifying delivered work and exploring.
 qa_time_budget_minutes: 45
@@ -13,15 +15,36 @@ qa_time_budget_minutes: 45
 max_consecutive_failures: 2
 
 exploration:
-  minutes: 15                         # at least this much of the budget goes to exploring
-  max_new_backlog_items_per_cycle: 3  # concrete findings queued per cycle; the rest stay in the report
-  areas:                              # visited in rotation, one per cycle
-    - authentication-and-session-security
-    - api-rate-limiting-and-payload-validation
-    - database-indexing-and-query-performance
-    - ui-theme-and-responsive-layout-consistency
+  minutes: 15 # at least this much of the budget goes to exploring
+  max_new_backlog_items_per_cycle: 3 # findings queued or proposed per cycle; the rest stay in the report
+  # The strategies, one per cycle, are in config/exploration.yaml.
+
+roadmap:
+  file: ROADMAP.md # features to build, in priority order; empty: no roadmap
+  max_new_per_cycle: 1 # roadmap features proposed per cycle
+  max_open: 3 # propose none while this many roadmap proposals are proposed, approved or queued
+
+proposals:
+  # Who approves the proposals in config/agent_proposals.json (improvements, missing
+  # capabilities, roadmap features) before they are queued:
+  #   jev    Jev (gate proposal_review of config/jev_policy.yaml); what it does not
+  #          approve waits for a human
+  #   human  a person: ruby bin/proposals.rb approve <change>
+  #   auto   nobody: every proposal is queued
+  approval: jev
+
+visual_qa:
+  # A browser session in an agent app (Claude, Hermes), scheduled as its own task
+  # with the openspec-kit-visual-qa skill's routine prompt. The headless cycle queues
+  # every change the merger integrates for it, and leaves it the strategies of
+  # config/exploration.yaml that need a browser. false: the headless cycle does
+  # everything, as well as it can without a browser.
+  enabled: true
+  minutes: 40 # time budget of one session
+  max_items_per_session: 5 # queued checks one session takes; the rest wait
 
 qa:
-  # Application skills the cycle uses to verify and explore, for example
-  # [browser-qa, live-qa-sweep]. Empty: the cycle relies on gates and code reading.
+  # Application skills the cycle and the visual session use to verify and explore,
+  # for example [browser-qa, live-qa-sweep]. Empty: gates, code reading and, in the
+  # visual session, the agent app's own browser.
   skills: []

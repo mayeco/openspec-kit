@@ -4,9 +4,12 @@
 # ==============================================================================
 # Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine]
 #
-# Selects the engine from argument $3, $AGENT_ENGINE (claude|hermes|opencode|codex|stub)
-# or the first engine found on PATH. Every invocation is bounded by a wall-clock
-# timeout. The exit code is the engine's exit code (124 = timeout).
+# Engines: claude, codex, copilot, hermes, opencode, and stub for the kit's tests.
+# Callers pass the engine of their role from config/agents.yaml (bin/lib/agents.rb);
+# without one it is $AGENT_ENGINE, then the first engine found on PATH. Every
+# invocation is bounded by a wall-clock timeout. The exit code is the engine's
+# exit code (124 = timeout). What agents may do is `permissions` in
+# config/agents.yaml (or $AGENT_PERMISSIONS): all, the default, or restricted.
 # Callers MUST NOT trust the agent's own success claim: verify post-conditions
 # (openspec validate, task counts, quality gates) after every call.
 set -euo pipefail
@@ -15,10 +18,11 @@ WORKDIR="${1:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT_FILE="${2:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT="$(cat "$PROMPT_FILE")"
 LIMIT="${AGENT_TIMEOUT_SECONDS:-3600}"
+PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
 
 ENGINE="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINE" ]; then
-  for candidate in claude hermes opencode codex; do
+  for candidate in claude codex copilot hermes opencode; do
     if command -v "$candidate" >/dev/null 2>&1; then ENGINE="$candidate"; break; fi
   done
 fi
@@ -45,22 +49,30 @@ bounded() {
   return "$rc"
 }
 
-# Agents may edit files, run gates, inspect git state and query read-only cycle
-# helpers. They MUST NOT commit, push, switch branches or rewrite canonical
-# specs; the dispatcher and run_cycle.sh own commits, and only the merger holds
-# push credentials.
-# Jev (a calibrated judge, not an engine) is allowed for read-only questions only;
-# auth, config, update and batch subcommands stay denied by omission.
-CLAUDE_ALLOWED="${CLAUDE_ALLOWED_TOOLS:-Read Edit Write Glob Grep Bash(openspec *) Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git show *) Bash(git rev-parse *) Bash(bash bin/run_gates.sh *) Bash(bash bin/cycle_status.sh *) Bash(bash bin/completed_since.sh *) Bash(jev noul *) Bash(jev choice *) Bash(jev score *) Bash(jev eval *) Bash(jev validate *)}"
+# Agents MUST NOT commit, push, switch branches or rewrite canonical specs: the
+# dispatcher and run_cycle.sh own commits, and only the merger holds push
+# credentials. The deny rules below hold in every permission mode.
+# permissions: all lets Claude Code run anything else (servers, curl, browsers),
+# which live QA needs. permissions: restricted allows only CLAUDE_ALLOWED: edit
+# files, run gates, inspect git state and query read-only cycle helpers. Jev (a
+# calibrated judge, not an engine) is allowed there for read-only questions
+# only; auth, config, update and batch subcommands stay denied by omission.
+CLAUDE_ALLOWED="${CLAUDE_ALLOWED_TOOLS:-Read Edit Write Glob Grep Bash(openspec *) Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git show *) Bash(git rev-parse *) Bash(bash bin/run_gates.sh *) Bash(bash bin/cycle_status.sh *) Bash(bash bin/completed_since.sh *) Bash(ruby bin/visual_qa.rb request *) Bash(jev noul *) Bash(jev choice *) Bash(jev score *) Bash(jev eval *) Bash(jev validate *)}"
 CLAUDE_DENIED="${CLAUDE_DISALLOWED_TOOLS:-Bash(git commit *) Bash(git push *) Bash(git rebase *) Bash(git reset *) Bash(git checkout *) Bash(git switch *) Bash(rm -rf *)}"
+# Copilot needs --allow-all-tools to run headless; deny rules take precedence over it.
+COPILOT_DENIED="${COPILOT_DENIED_TOOLS:-shell(git commit),shell(git push),shell(git rebase),shell(git reset),shell(git checkout),shell(git switch)}"
 
 cd "$WORKDIR"
 case "$ENGINE" in
   claude)
+    if [ "$PERMISSIONS" = restricted ]; then
+      MODE=(--permission-mode acceptEdits --allowedTools "$CLAUDE_ALLOWED")
+    else
+      MODE=(--permission-mode bypassPermissions)
+    fi
     bounded claude -p "$PROMPT" \
       --output-format json \
-      --permission-mode acceptEdits \
-      --allowedTools "$CLAUDE_ALLOWED" \
+      "${MODE[@]}" \
       --disallowedTools "$CLAUDE_DENIED" \
       --max-budget-usd "${AGENT_MAX_BUDGET_USD:-5}" \
       --no-session-persistence
@@ -73,7 +85,17 @@ case "$ENGINE" in
     bounded opencode run --format json "$PROMPT"
     ;;
   codex)
-    bounded codex exec --full-auto "$PROMPT"
+    if [ "$PERMISSIONS" = restricted ]; then
+      bounded codex exec --full-auto "$PROMPT"
+    else
+      bounded codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
+    fi
+    ;;
+  copilot)
+    DENY=()
+    IFS=',' read -ra RULES <<< "$COPILOT_DENIED"
+    for rule in "${RULES[@]}"; do DENY+=(--deny-tool "$rule"); done
+    bounded copilot -p "$PROMPT" --silent --allow-all-tools "${DENY[@]}"
     ;;
   stub)
     # Deterministic fake agent for the orchestrator's own tests.

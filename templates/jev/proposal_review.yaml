@@ -1,0 +1,30 @@
+# J6 - Proposal review. Asked by bin/proposals.rb after the scheduled cycle, when
+# `proposals.approval` in config/cycle.yaml is jev. A proposal that passes every
+# assert of the proposal_review gate (config/jev_policy.yaml) is queued; any other
+# waits for a human. State (JSON): proposal{change_name, description, priority,
+# source, ...}, roadmap (text), existing_capabilities, queued_changes, other_proposals.
+questions:
+  advances_the_product:
+    type: noul
+    instructions: Does the proposal advance the product in the direction the roadmap and the existing capabilities describe?
+    criteria:
+      "true": The proposal builds or improves something the roadmap lists, or fixes a concrete gap in an existing capability, with a stated benefit for users or operators.
+      "false": The proposal is speculative, unrelated to the roadmap and the existing capabilities, or changes the product's direction without saying why.
+  well_scoped:
+    type: noul
+    instructions: Is the proposal one cohesive change that an agent can plan and build without further product decisions?
+    criteria:
+      "true": It describes one change with a clear outcome and acceptance hints, small enough for one plan and one build.
+      "false": It bundles several unrelated changes, is open-ended, or leaves product, legal or pricing decisions to the agent.
+  not_duplicate:
+    type: noul
+    instructions: Is the proposal different from every queued change and other proposal, and not already an existing capability?
+    criteria:
+      "true": Nothing in queued_changes, other_proposals or existing_capabilities covers the same outcome.
+      "false": A queued change, another proposal or an existing capability already covers the same outcome.
+  safe_to_automate:
+    type: noul
+    instructions: Can this change be built and integrated autonomously without risking user data, money, security or legal obligations?
+    criteria:
+      "true": A defect in it would be visible and reversible, and it does not touch payments, permissions, personal data retention or irreversible data changes.
+      "false": It touches payments, permissions, personal data retention, irreversible data changes or legal obligations, so a person should decide.

@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.3.2",
-  "source_commit": "a1cf7eb8f9fcb752547a4feb950c5ae08d640805",
+  "version": "2.4.0",
+  "source_commit": "8a4aa3ff70520b52c23f28752a76cb944e350e4d",
   "source_dirty": false,
-  "built_at": "2026-10-16T14:08:47Z",
+  "built_at": "2026-10-16T23:46:35Z",
   "toolchain": {
     "openspec": "1.14.1",
     "git": "2.56.0",
@@ -12,173 +12,161 @@
     "jev_model": "jev-1.13.0"
   },
   "files": {
-    ".agents/skills/openspec-cycle/SKILL.md": {
-      "class": "kit",
-      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
-    },
-    ".agents/skills/openspec-cycle/references/report.template.md": {
-      "class": "kit",
-      "sha256": "aa92760d9e66134aa1ee9e880f1bdb1121da01e71bb4c40aac3ad60d9c52c84d"
-    },
-    ".agents/skills/openspec-cycle/references/routine-prompt.md": {
-      "class": "kit",
-      "sha256": "23d715f0541fd8975fe2534788f50a27f442496d4c02efb08f8cb18dac9a9000"
-    },
-    ".agents/skills/openspec-cycle/references/state.template.json": {
-      "class": "kit",
-      "sha256": "57230268fdce71fb049a79419be94f8a697d3ad7f170ecd7500cc78e6a4bc9b1"
-    },
-    ".agents/skills/openspec-qa/SKILL.md": {
-      "class": "kit",
-      "sha256": "1345b9bd0c68189c7342f3a1ef1bda31a2b264fab640bbbb6160d53ffb12bd65"
-    },
-    ".claude/skills/openspec-cycle/SKILL.md": {
-      "class": "kit",
-      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
-    },
-    ".claude/skills/openspec-cycle/references/report.template.md": {
-      "class": "kit",
-      "sha256": "aa92760d9e66134aa1ee9e880f1bdb1121da01e71bb4c40aac3ad60d9c52c84d"
-    },
-    ".claude/skills/openspec-cycle/references/routine-prompt.md": {
-      "class": "kit",
-      "sha256": "23d715f0541fd8975fe2534788f50a27f442496d4c02efb08f8cb18dac9a9000"
-    },
-    ".claude/skills/openspec-cycle/references/state.template.json": {
-      "class": "kit",
-      "sha256": "57230268fdce71fb049a79419be94f8a697d3ad7f170ecd7500cc78e6a4bc9b1"
-    },
-    ".claude/skills/openspec-qa/SKILL.md": {
-      "class": "kit",
-      "sha256": "1345b9bd0c68189c7342f3a1ef1bda31a2b264fab640bbbb6160d53ffb12bd65"
-    },
-    ".hermes/skills/openspec-cycle/SKILL.md": {
-      "class": "kit",
-      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
-    },
-    ".hermes/skills/openspec-cycle/references/report.template.md": {
-      "class": "kit",
-      "sha256": "aa92760d9e66134aa1ee9e880f1bdb1121da01e71bb4c40aac3ad60d9c52c84d"
-    },
-    ".hermes/skills/openspec-cycle/references/routine-prompt.md": {
-      "class": "kit",
-      "sha256": "23d715f0541fd8975fe2534788f50a27f442496d4c02efb08f8cb18dac9a9000"
-    },
-    ".hermes/skills/openspec-cycle/references/state.template.json": {
-      "class": "kit",
-      "sha256": "57230268fdce71fb049a79419be94f8a697d3ad7f170ecd7500cc78e6a4bc9b1"
-    },
-    ".hermes/skills/openspec-qa/SKILL.md": {
-      "class": "kit",
-      "sha256": "1345b9bd0c68189c7342f3a1ef1bda31a2b264fab640bbbb6160d53ffb12bd65"
-    },
-    ".opencode/skills/openspec-cycle/SKILL.md": {
-      "class": "kit",
-      "sha256": "4572716557ce8d0576208a6cddc05d33d26db62c3e400fed24cc3d5d4a1ea8d0"
-    },
-    ".opencode/skills/openspec-cycle/references/report.template.md": {
-      "class": "kit",
-      "sha256": "aa92760d9e66134aa1ee9e880f1bdb1121da01e71bb4c40aac3ad60d9c52c84d"
-    },
-    ".opencode/skills/openspec-cycle/references/routine-prompt.md": {
-      "class": "kit",
-      "sha256": "23d715f0541fd8975fe2534788f50a27f442496d4c02efb08f8cb18dac9a9000"
-    },
-    ".opencode/skills/openspec-cycle/references/state.template.json": {
-      "class": "kit",
-      "sha256": "57230268fdce71fb049a79419be94f8a697d3ad7f170ecd7500cc78e6a4bc9b1"
-    },
-    ".opencode/skills/openspec-qa/SKILL.md": {
-      "class": "kit",
-      "sha256": "1345b9bd0c68189c7342f3a1ef1bda31a2b264fab640bbbb6160d53ffb12bd65"
-    },
     "MEMORY.md": {
       "class": "seed",
-      "sha256": "47e2594eb4ee5a1ef26b9b6aacb2bec51dac8d9650a6d3e8fdce0038bb773143"
+      "sha256": "e98a6298dfa62821dd4fd0f5edbd5ffb65582a23b1f2e0bb1369ba82dfc5e162"
     },
     "README.md": {
       "class": "seed",
-      "sha256": "27967b4c22429148ebdb258e1164a392fde81efd683c3a64336e040903515be6"
+      "sha256": "0d4a0bdb2360bf9d18e0f6523345f9b78982f169ba9f5ac1a3f121ecea999765"
+    },
+    "ROADMAP.md": {
+      "class": "seed",
+      "sha256": "ee9c1bbefa6793263db344dde1b61155b86178758ffa96d5e419038fa3de0d23"
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "b75327bf0ff703bab875b887c27443ae08862b7ebf76a46890ea8ead9562aa1c"
+      "sha256": "c9d0d948f421e56664625759000d3e9363a104b3363196f022a733909489a3d9"
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "11ece8abc6a1abcc0343c4bb7478d32634c3e40fedebb0780c0290902aa11431"
+      "sha256": "80281416cf6bc4aba2c28b21ee7bb96c03bd3e3270b6c6ef3bd69d85069d7115"
     },
     "bin/completed_since.sh": {
       "class": "kit",
       "sha256": "cd06a3c58c0bfc3ae287a6038983e43804f56c6d187b1ecbb86e8082b83620de"
     },
+    "bin/cycle_prompt.rb": {
+      "class": "kit",
+      "sha256": "25b3a1b28bde76e7d1595c9a0184d83236182648fc2cbe36361c6663acd6af6c"
+    },
     "bin/cycle_status.sh": {
       "class": "kit",
-      "sha256": "4d2bdf0b48e9be51720b4bc9df050719bef210db4fb105bb1060b3e8d81e951c"
+      "sha256": "c5b456888689b357f0361851a6aad06376d5b85ffccd76c00144925e53f0ab22"
+    },
+    "bin/install.sh": {
+      "class": "kit",
+      "sha256": "9d45ca7bc787c1c4e56e8db544984cd03eafd867bc30f6bc15acb601a1f056be"
     },
     "bin/jev_contract.sh": {
       "class": "kit",
-      "sha256": "d502f5196143973bcf775d18debd8bfe83193cecba6096ebafa821f05fa45877"
+      "sha256": "00950fd623f01bde98f03b368fd681e0d0ddb803e25865fa8dd8724514191fe2"
+    },
+    "bin/lib/agents.rb": {
+      "class": "kit",
+      "sha256": "9c9609ad0f32d22c97e0c80d5457169ed0c68281df348e0f2f7d387d8e3bf45f"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
       "sha256": "63e2e8e4e98570f10a9f506e6d26cccf8605e30275ea3994c7162c46b7dd2be3"
     },
+    "bin/lib/record.sh": {
+      "class": "kit",
+      "sha256": "b201446156c365bd92db0c810727da0d96a5fdb3777bc113b532da87807b5eb4"
+    },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "d0363563cd4c4719f4000b5714bb621e20a8206652a795f797508265861c62a7"
+      "sha256": "5691743bd989efa76d3f22385e0d23b7440ab533624c610fdb415b8d3fc53a74"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "f8d2bef730f8159923c0f206219288065500977b0243784b5c850b185f01c064"
+      "sha256": "a21d59862ab441a084aa432f8325eedc7fdc253b921732eb5037653c25d267c8"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
-      "sha256": "e0cf6ee8b52c2b02214a3d829545546c207e3ba7ee1e0b208ef108a84462b1aa"
+      "sha256": "d08cfdc419a304390b3d16ae86a874372cabcf0fae1e0c462f7684455fc385b4"
+    },
+    "bin/proposals.rb": {
+      "class": "kit",
+      "sha256": "feae6b4a0f04762b872641f435b63b5da2a9189454a78fd71077b4a87831bb1c"
+    },
+    "bin/repo_exec.sh": {
+      "class": "kit",
+      "sha256": "c692eb16b65e8e5f7c969dfc09d0f215d442b0441f12732a3ca9df1d0950367b"
     },
     "bin/run_cycle.sh": {
       "class": "kit",
-      "sha256": "014b3e4acbfb08244dfda2687a0f0f4e1d2fa5dd86a7db4aeb059a9345b0b6b9"
+      "sha256": "07562dab79d13419042aef79e57f5b982995ff65d71a38eec5f6b0ed66a2d81f"
     },
     "bin/run_gates.sh": {
       "class": "kit",
-      "sha256": "a9ff30372d57b8ffe33e777aedfc92a3801cbfb6e92bccbe4d96b23c060d4d2f"
+      "sha256": "19a19890f95131d97f70a4f36c67950347f41dbd03159a7b5a21359f3a1e02c1"
     },
     "bin/sync_repos.sh": {
       "class": "kit",
       "sha256": "5e9ec05d9bb4a33bf6c597680fcab4a33582b76b6d5580a4ac5cfcd60a4cdbbe"
     },
+    "bin/visual_qa.rb": {
+      "class": "kit",
+      "sha256": "b74812a7ac50f17767534205e03b4875215efb55d3ccfefee3bf670ae52e5371"
+    },
+    "bin/visual_qa.sh": {
+      "class": "kit",
+      "sha256": "dbbdc289a3b78917ef8394bd8aae9c97d6af72ed5dc15aeae3bc009ba6ccc645"
+    },
     "config/agent_backlog.json": {
+      "class": "seed",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "config/agent_proposals.json": {
       "class": "seed",
       "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
     },
     "config/cycle.yaml": {
       "class": "seed",
-      "sha256": "04602c6dff9a6099eb234ef64f3f67ad219f715da70b6b6f54b5134bf6726c59"
+      "sha256": "994c4316f76526d9538697b60165f41ab7cf3d150d9e3ec758582a73f2e80ca5"
+    },
+    "config/exploration.yaml": {
+      "class": "seed",
+      "sha256": "3fbbcc2080d75e31c475cf168496075dd6ebd33b0e623e388765368b109af3fb"
     },
     "config/jev_policy.yaml": {
       "class": "seed",
-      "sha256": "f0e78f470d736e9ad32d3d36b3c5f1cbaac02a3b88b76033bde9871b1e7044eb"
+      "sha256": "1b4b8398806a4b887c4c3d7337b5cbab02b4de54963b6c2d24db928bd0678a5f"
     },
     "config/repo.template.yaml": {
       "class": "kit",
-      "sha256": "cccd59d1c2100e86d8e7feb97eb05f07cdf60859c6fec893875371ce5c251476"
+      "sha256": "d08798bb9d3a6444051ebfb590873d40b2636a991180b0e4a5ee0f9cfd9081a6"
     },
-    "docs/README.md": {
-      "class": "seed",
-      "sha256": "d0688a970f3b7244ce92426996e4aee181eb53c581b04a5e8c4c877767f9cc05"
+    "config/repo_env.template.sh": {
+      "class": "kit",
+      "sha256": "d1e212155a4bce8dc35a91612b16a77ec61d0dbb0948e9a21c13fc598a525451"
     },
-    "install.sh": {
-      "class": "dist",
-      "sha256": "8a7f4d6c44c4328af508eb54a8b2b2b83c6578bae59a57dbb1d3af60718ac06a"
+    "skills/openspec-kit-cycle/SKILL.md": {
+      "class": "skill",
+      "sha256": "b0360be83f4ff83a957ac0b688493329eb556ebc9c049ebf02a38d4f563c3934"
+    },
+    "skills/openspec-kit-cycle/references/report.template.md": {
+      "class": "skill",
+      "sha256": "8c5859cda0ed4a2ab3dd81937207474d086d1caae1814d8cdda8fea0719b6a68"
+    },
+    "skills/openspec-kit-cycle/references/routine-prompt.md": {
+      "class": "skill",
+      "sha256": "204463e5d05f97ad3712193e46e0b9cab73195d73886217af321aa07aee5fdd8"
+    },
+    "skills/openspec-kit-qa/SKILL.md": {
+      "class": "skill",
+      "sha256": "5fac0e2948c517fbfa8a8500ac2956f2e2583ee11bd691f85cb543f16752cca5"
+    },
+    "skills/openspec-kit-visual-qa/SKILL.md": {
+      "class": "skill",
+      "sha256": "0db99378243ef081a2ef59a0e97eb21ed3a427f9308c1615e0c61a04ca0a20ba"
+    },
+    "skills/openspec-kit-visual-qa/references/routine-prompt.md": {
+      "class": "skill",
+      "sha256": "9cf5ef48d3ac84674b9a0b9277521f5c335cbbb626df846b6e2c493a39e60eac"
     },
     "templates/authoring_rules.md": {
       "class": "kit",
-      "sha256": "0a0c4322a1b20db6cab6c99136beda188960f975c7b50b3d19208a5d92a2f1bd"
+      "sha256": "ee73507b8e7d63ef9cec3852c149f67139b57dd42e5980c6f38c6bee8da0fd7a"
     },
     "templates/cycle_prompt.md": {
       "class": "kit",
-      "sha256": "25e5205ad1c2d43f33fcc386db88b1b8d02515638b18ed46909fd333d042e2a6"
+      "sha256": "1bc42b3b1960810b8ed51f3dbcc4e847788292cd67c43499d1aa6a55103f088b"
+    },
+    "templates/cycle_state.json": {
+      "class": "kit",
+      "sha256": "84e1479f9ba96c1b7fb0b3c17ac9cd060db7a9ee703891026e2ca221c0c055fc"
     },
     "templates/jev/canary.yaml": {
       "class": "kit",
@@ -224,9 +212,21 @@
       "class": "kit",
       "sha256": "96cf49937c492251ac5e7f316e23f527be5a48a70d96cf48309ed3b3c9558ae3"
     },
+    "templates/jev/fixtures/proposal_review.bad.json": {
+      "class": "kit",
+      "sha256": "7b82d5ae667ab22acc641ee98499ad5963cf74b4c76d143a16cbb72be395c0e4"
+    },
+    "templates/jev/fixtures/proposal_review.good.json": {
+      "class": "kit",
+      "sha256": "141a994c0c6a18d7e3594f95923c17f23f8448fd68eb33bef9fea9f46921d49e"
+    },
     "templates/jev/plan_review.yaml": {
       "class": "kit",
       "sha256": "a36c552551df57dae51a96c4cf48f32acd083f195e1d6df36e1662893bc715b4"
+    },
+    "templates/jev/proposal_review.yaml": {
+      "class": "kit",
+      "sha256": "0c3a2abb8467ff052a260d213b308c2c9a386d1a5d420240e4d0baffa6b444c1"
     },
     "templates/jev/task_priority.yaml": {
       "class": "kit",

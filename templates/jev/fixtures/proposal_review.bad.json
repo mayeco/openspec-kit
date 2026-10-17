@@ -1,0 +1,12 @@
+{
+  "proposal": {
+    "change_name": "rework-billing-and-permissions",
+    "priority": "high",
+    "source": "exploration",
+    "description": "Rewrite billing to support crypto payments, change how refunds are computed, merge the admin and customer roles into one, and delete the order history older than a year to save space. Also improve performance in general."
+  },
+  "roadmap": "# Roadmap\n\n1. Orders list (done)\n2. Filter the orders list by status\n3. Weekly sales summary email",
+  "existing_capabilities": ["orders", "customers", "authentication"],
+  "queued_changes": ["fix-order-total-rounding"],
+  "other_proposals": []
+}

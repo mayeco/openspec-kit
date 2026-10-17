@@ -10,7 +10,7 @@
 #     condition that names a missing question, exit 2);
 #   - every routing rule names an existing question and option;
 #   - the policy pins a versioned model id.
-# --live (about 9 API calls, well under $0.001):
+# --live (about 11 API calls, well under $0.001):
 #   - the key is accepted and the pinned model answers;
 #   - the canary: an obvious yes passes (exit 0), an obvious no fails (exit 10);
 #   - each gate's known-good and known-bad fixture lands on the right side of
@@ -21,7 +21,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 LIVE=0; [ "${1:-}" = "--live" ] && LIVE=1
 FIX=templates/jev/fixtures
+# An application's policy; the kit's own source tree keeps it as a seed.
 POLICY=config/jev_policy.yaml
+[ -f "$POLICY" ] || POLICY=seeds/config/jev_policy.yaml
 FAILURES=0
 
 check() { if "${@:2}" >/dev/null 2>&1; then echo "  PASS  $1"; else echo "  FAIL  $1"; FAILURES=$((FAILURES + 1)); fi; }
@@ -46,7 +48,7 @@ for f in templates/jev/*.yaml; do
   check "$(basename "$f") passes jev validate --strict" jev validate -f "$f" --strict -o json --quiet
 done
 check "policy pins a versioned model ($MODEL)" bash -c "[[ '$MODEL' =~ ^jev-[0-9]+\.[0-9]+\.[0-9]+$ ]]"
-for gate in plan_review failure_triage change_risk; do
+for gate in plan_review failure_triage change_risk proposal_review; do
   file="$(policy_get gates "$gate" file)"
   fixture="$(ls "$FIX/$gate".*.json | head -1)"
   assert_args "$gate"
@@ -116,6 +118,14 @@ if [ "$LIVE" -eq 1 ]; then
   }
   risk low no
   risk high yes
+
+  assert_args proposal_review
+  ask templates/jev/proposal_review.yaml "$FIX/proposal_review.good.json" "${ASSERT_ARGS[@]}" > /tmp/jev_prop.$$ 2>&1; RC=$?
+  check "proposal_review: scoped roadmap feature is approved (exit $RC)" test "$RC" -eq 0
+  [ "$RC" -ne 0 ] && field gate conditions < /tmp/jev_prop.$$ 2>/dev/null | sed 's/^/          /'
+  ask templates/jev/proposal_review.yaml "$FIX/proposal_review.bad.json" "${ASSERT_ARGS[@]}" >/dev/null 2>&1; RC=$?
+  check "proposal_review: bundled, risky proposal waits for a human (exit $RC)" test "$RC" -eq 10
+  rm -f /tmp/jev_prop.$$
 fi
 
 echo "========================================================================"

@@ -51,3 +51,12 @@ gates:
     file: templates/jev/task_priority.yaml
     min_actionable_impact: 0.7
     reject_choices: ["cannot_tell"]
+
+  proposal_review:         # J6: bin/proposals.rb after each cycle, when proposals.approval is jev (config/cycle.yaml)
+    mode: enforce          # enforce: a passing proposal is queued; advisory: answers recorded, a human approves; off: a human approves
+    file: templates/jev/proposal_review.yaml
+    assert:                # every condition must hold; any other proposal waits for a human
+      - "advances_the_product >= 0.7"
+      - "well_scoped >= 0.7"
+      - "not_duplicate >= 0.7"
+      - "safe_to_automate >= 0.7"

@@ -10,8 +10,10 @@
 #
 # Gates per repo come from repos/<name>/repo.config.yaml: lint, typecheck, test,
 # build, then any extra keys (e.g. secrets) in file order. Empty or un-instantiated ({{...}}) commands
-# are skipped with a warning. The OpenSpec layer is validated whenever anything
-# under openspec/ changed. Exit 0 = all executed gates passed.
+# are skipped with a warning. A repository's gates run through bin/repo_exec.sh,
+# so its env_script (repo.config.yaml) prepares the toolchain first. The OpenSpec
+# layer is validated whenever anything under openspec/ changed. Exit 0 = all
+# executed gates passed.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +26,7 @@ while [ $# -gt 0 ]; do
     --all) ALL=1 ;;
     --base) BASE="${2:?--base needs a ref}"; shift ;;
     --repo) REPOS+=("${2:?--repo needs a name}"); shift ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "run_gates: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -61,7 +63,11 @@ run_gate() { # <label> <dir> <command>
   local label="$1" dir="$2" cmd="$3" started rc
   started=$(date +%s)
   echo "---- [gate] ${label}: ${cmd}"
-  (cd "$dir" && bash -c "$cmd")
+  if [ "$dir" = "$ROOT" ]; then
+    (cd "$dir" && bash -c "$cmd")
+  else
+    bash "$ROOT/bin/repo_exec.sh" "$dir" bash -c "$cmd"
+  fi
   rc=$?
   if [ "$rc" -eq 0 ]; then
     echo "---- [pass] ${label} ($(( $(date +%s) - started ))s)"

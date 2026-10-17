@@ -7,10 +7,25 @@
 #             in a new session and return at once with its pid and log.
 #
 # Owns everything that must not depend on an LLM remembering to do it: PATH,
-# the re-entrancy lock, the pause switch, preflight, merging, sync, the
-# write-scope guard, recording memory, and dispatch. The agent runs once, for
-# judgment only (verify, triage, explore, queue, curate memory), following the
-# openspec-cycle skill through templates/cycle_prompt.md.
+# the locks, the pause switch, preflight, merging, sync, the cycle's plan
+# (bin/cycle_prompt.rb), the write-scope guard, the review of proposals
+# (bin/proposals.rb), recording memory, and dispatch. The agent runs once, for
+# judgment only (verify, triage, explore, queue, propose, curate memory),
+# following the openspec-kit-cycle skill through the prompt the script renders.
+# The scheduled task always runs the same command: every setting, the engines
+# included, is read here from config/ (config/agents.yaml, config/cycle.yaml,
+# config/exploration.yaml).
+#
+# Two locks: log/cycle.lock covers the judgment, from preflight to record, and
+# log/dispatch.lock covers a dispatch. A dispatch can take hours; the cycle lock
+# is released before it starts, so the next scheduled cycle still verifies,
+# explores and queues while it runs, and leaves the dispatch to it.
+#
+# The judgment here is headless: crontab, launchd or an agent app may schedule
+# it. Testing in a browser needs an agent app (Claude, Hermes): changes the
+# merger integrated are queued for the visual QA session of bin/visual_qa.sh,
+# and while that session runs this cycle does not judge, so that only one agent
+# writes the memory, the backlog and the proposals at a time.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,20 +35,39 @@ export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.loc
 export CI=1 NONINTERACTIVE=1 GIT_TERMINAL_PROMPT=0
 BASE="${OPENSPEC_BASE_BRANCH:-master}"
 LOG_DIR="$ROOT/log"
-CYCLE_DIR="$LOG_DIR/cycle"   # state.json, reports/ and one log per cycle (git-ignored)
-LOCK="$LOG_DIR/cycle.lock"   # a directory: mkdir is atomic everywhere (macOS has no flock(1))
+CYCLE_DIR="$LOG_DIR/cycle"            # state.json, reports/, prompts and one log per cycle (git-ignored)
+LOCK="$LOG_DIR/cycle.lock"            # directories: mkdir is atomic everywhere (macOS has no flock(1))
+DISPATCH_LOCK="$LOG_DIR/dispatch.lock"
 mkdir -p "$CYCLE_DIR/reports"
 
-lock_owner() { # prints the PID of a live cycle, if any
+lock_owner() { # <lock-dir>: prints the PID of its live owner, if any
   local pid
-  pid="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  pid="$(cat "$1/pid" 2>/dev/null || true)"
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
 }
+take_lock() { # <lock-dir>: succeeds when this process now holds it
+  if ! mkdir "$1" 2>/dev/null; then
+    lock_owner "$1" >/dev/null && return 1
+    echo "cycle: reclaiming stale $(basename "$1") (pid $(cat "$1/pid" 2>/dev/null || echo unknown))"
+    rm -rf "$1" && mkdir "$1" || return 1
+  fi
+  echo "$$" > "$1/pid"
+}
+live_pid_in() { # <lockfile with pid=N>: prints N when that process is alive
+  local pid
+  pid="$(sed -nE 's/.*pid=([0-9]+).*/\1/p' "$1" 2>/dev/null | head -1)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+}
+merger_running() { live_pid_in "$LOG_DIR/locks/merger.lock" >/dev/null; }
+# A cycle's dispatch, or a dispatcher an operator started by hand.
+dispatch_owner() { lock_owner "$DISPATCH_LOCK" || live_pid_in "$LOG_DIR/locks/dispatcher.lock"; }
+# shellcheck source=lib/record.sh
+. "$ROOT/bin/lib/record.sh"   # SCOPE, scope_guard, record, visual_session
 
 if [ -f "$LOG_DIR/PAUSE" ]; then echo "cycle: paused ($(head -1 "$LOG_DIR/PAUSE"))"; exit 0; fi
 
 if [ "${1:-}" = "--detach" ]; then
-  if pid="$(lock_owner)"; then echo "cycle: already running (pid $pid)"; exit 0; fi
+  if pid="$(lock_owner "$LOCK")"; then echo "cycle: already running (pid $pid)"; exit 0; fi
   # A scheduled agent's shell must not own the cycle (Claude Code stops a command
   # after 10 minutes, and the session ends): start it in a new session, with no
   # terminal and no inherited pipes, so the agent can return at once.
@@ -49,68 +83,63 @@ if [ "${1:-}" = "--detach" ]; then
   exit 0
 fi
 
-if ! mkdir "$LOCK" 2>/dev/null; then
-  if OWNER="$(lock_owner)"; then echo "cycle: already running (pid $OWNER)"; exit 0; fi
-  echo "cycle: reclaiming stale lock (pid $(cat "$LOCK/pid" 2>/dev/null || echo unknown))"
-  rm -rf "$LOCK" && mkdir "$LOCK" || exit 1
-fi
-echo "$$" > "$LOCK/pid"
-MERGER=""
-trap 'rm -rf "$LOCK"; [ -n "$MERGER" ] && kill "$MERGER" 2>/dev/null' EXIT
+if ! take_lock "$LOCK"; then echo "cycle: already running (pid $(lock_owner "$LOCK"))"; exit 0; fi
+CYCLE_HELD=1; DISPATCH_HELD=0; MERGER=""
+cleanup() {
+  [ "$CYCLE_HELD" = 1 ] && rm -rf "$LOCK"
+  [ "$DISPATCH_HELD" = 1 ] && rm -rf "$DISPATCH_LOCK"
+  [ -n "$MERGER" ] && kill "$MERGER" 2>/dev/null
+}
+trap cleanup EXIT
 
 STAMP="${CYCLE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 exec > >(tee -a "$CYCLE_DIR/cycle-$STAMP.log") 2>&1
 
-# The judgment agent may write only these versioned paths (plus log/cycle/ and
-# log/PAUSE, which git ignores); everything else belongs to the merger or to humans.
-SCOPE=(MEMORY.md config/agent_backlog.json)
+# roles.cycle in config/agents.yaml, unless AGENT_ENGINE_CYCLE or AGENT_ENGINE overrides it.
+ENGINE_CYCLE="$(ruby bin/lib/agents.rb engine cycle)"
 
-DEFAULT_ENGINE="${AGENT_ENGINE:-claude}"
-ENGINE_CYCLE="${AGENT_ENGINE_CYCLE:-$DEFAULT_ENGINE}"
-
-# First cycle: start the state from the skill's template.
-STATE_TEMPLATE=".agents/skills/openspec-cycle/references/state.template.json"
-[ -f "$CYCLE_DIR/state.json" ] || { [ -f "$STATE_TEMPLATE" ] && cp "$STATE_TEMPLATE" "$CYCLE_DIR/state.json"; }
-
-merger_running() {
-  local pid
-  pid="$(sed -nE 's/.*pid=([0-9]+).*/\1/p' "$LOG_DIR/locks/merger.lock" 2>/dev/null | head -1)"
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
-}
+# First cycle: start the state from its template.
+[ -f "$CYCLE_DIR/state.json" ] || cp templates/cycle_state.json "$CYCLE_DIR/state.json"
 
 echo "== cycle $STAMP"
+DISPATCHING="$(dispatch_owner || true)"
+[ -n "$DISPATCHING" ] && echo "dispatch in progress (pid $DISPATCHING): this cycle judges and records, and does not dispatch"
 echo "== preflight"; bash bin/check_ai_engines.sh || exit 1
 # Integrate what the previous cycle queued, so the judgment verifies it.
-echo "== merge";     merger_running && echo "merger service running; not draining" || ruby bin/openspec_merger.rb
+echo "== merge";     merger_running && echo "merger running; not draining" || ruby bin/openspec_merger.rb
 echo "== sync";      bash bin/sync_repos.sh
-echo "== judgment";  bash bin/agent_exec.sh "$ROOT" templates/cycle_prompt.md "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
+# What the merger integrated since the last cycle waits for the browser (bin/visual_qa.sh).
+echo "== visual queue"; ruby bin/visual_qa.rb enqueue-integrated || echo "cycle: visual queue not updated"
 
-echo "== scope guard"
-OUTSIDE="$(git status --porcelain --ignore-submodules=all -- . "${SCOPE[@]/#/:!}")"
-if [ -n "$OUTSIDE" ]; then
-  echo "cycle: agent wrote outside its scope; nothing recorded, pausing for a human:"; echo "$OUTSIDE"
-  echo "scope violation in cycle $STAMP" > "$LOG_DIR/PAUSE"
-  exit 1
+if VISUAL="$(visual_session)"; then
+  echo "visual QA session $VISUAL in progress: this cycle does not judge, and only dispatches"
+else
+  echo "== plan"
+  PROMPT="$CYCLE_DIR/prompt-$STAMP.md"
+  ruby bin/cycle_prompt.rb "$PROMPT" --dispatch-running "$DISPATCHING" || exit 1
+  echo "== judgment (${ENGINE_CYCLE:-first engine on PATH})"
+  bash bin/agent_exec.sh "$ROOT" "$PROMPT" "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
+
+  echo "== scope guard"; scope_guard "cycle $STAMP" || exit 1
+  # Proposals the judgment added are approved (Jev, a human or automatically, as
+  # config/cycle.yaml says) and the approved ones are queued in the backlog.
+  echo "== proposals"; ruby bin/proposals.rb review || echo "cycle: proposal review failed; proposals left as they were"
+  echo "== record"; record "chore(memory): scheduled cycle $STAMP"
 fi
 
-echo "== record"
-if [ -n "$(git status --porcelain -- "${SCOPE[@]}")" ]; then
-  # git add aborts on a pathspec that matches nothing: stage existing or tracked paths only.
-  STAGE=()
-  for p in "${SCOPE[@]}"; do
-    if [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then STAGE+=("$p"); fi
-  done
-  git add -A -- "${STAGE[@]}" && git commit --quiet -m "chore(memory): scheduled cycle $STAMP"
-  for attempt in 1 2 3; do
-    # Disjoint paths from the merger's commits, so this rebase cannot conflict on content.
-    git pull --quiet --rebase origin "$BASE" && git push --quiet origin "HEAD:$BASE" && break
-    sleep $((attempt * 5))
-  done
-  git submodule update --init --quiet
-fi
-
+# The judgment is recorded: from here on the next scheduled cycle may start.
+rm -rf "$LOCK"; CYCLE_HELD=0
 if [ -f "$LOG_DIR/PAUSE" ]; then echo "cycle: paused by agent or operator"; exit 0; fi
 echo "== dispatch"
+if ! take_lock "$DISPATCH_LOCK"; then
+  echo "dispatch: already running (pid $(dispatch_owner)); what this cycle queued waits for the next dispatch"
+  echo "== done"; exit 0
+fi
+DISPATCH_HELD=1
+if pid="$(live_pid_in "$LOG_DIR/locks/dispatcher.lock")"; then
+  echo "dispatch: a dispatcher started by hand is running (pid $pid); not starting another"
+  echo "== done"; exit 0
+fi
 # A merger integrates while the dispatcher waits on dependencies. Once the
 # dispatcher has finished, log/merger.stop makes it drain the queue and exit
 # between changes. A merger the operator runs as a service is left alone.

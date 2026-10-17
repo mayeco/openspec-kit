@@ -10,11 +10,20 @@ mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo "$N
 
 echo "== Guards"
 if [ -f "$LOG/PAUSE" ]; then echo "PAUSED: YES ($(head -1 "$LOG/PAUSE"))"; else echo "PAUSED: NO"; fi
-if [ -d "$LOG/cycle.lock" ]; then
-  echo "CYCLE LOCK: pid $(cat "$LOG/cycle.lock/pid" 2>/dev/null) ($(( (NOW - $(mtime "$LOG/cycle.lock")) / 60 )) min old)"
-else
-  echo "CYCLE LOCK: none"
-fi
+for lock in cycle dispatch visual_qa; do # the judgment of a cycle; a cycle's dispatch; a visual QA session
+  label="$(echo "$lock" | tr '[:lower:]_' '[:upper:] ') LOCK"
+  if [ -d "$LOG/$lock.lock" ]; then
+    echo "$label: pid $(cat "$LOG/$lock.lock/pid" 2>/dev/null) ($(( (NOW - $(mtime "$LOG/$lock.lock")) / 60 )) min old)"
+  else
+    echo "$label: none"
+  fi
+done
+
+AGENTS="$(ruby "$ROOT/bin/lib/agents.rb" list 2>/dev/null)"
+ROLES="$(for role in plan build cycle; do
+  engine="$(ruby "$ROOT/bin/lib/agents.rb" engine "$role" 2>/dev/null)"; printf '%s: %s, ' "$role" "${engine:-first on PATH}"
+done)"
+echo "AGENTS: ${AGENTS:-none selected (no config/agents.yaml)} (${ROLES%, }; permissions: $(ruby "$ROOT/bin/lib/agents.rb" permissions 2>/dev/null))"
 
 if [ -f "$LOG/cycle/state.json" ]; then
   ruby -rjson -e 'c = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")).fetch("last_cycle", {})
@@ -32,6 +41,12 @@ done
 
 echo "== Queues"
 echo "ready_to_merge: $(find "$LOG/ready_to_merge" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
+ruby "$ROOT/bin/visual_qa.rb" status 2>/dev/null
+if [ -f "$ROOT/config/agent_proposals.json" ]; then
+  ruby -rjson -e 'p = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")) rescue (puts "proposals: unreadable"; exit)
+    waiting = Array(p).select { |i| i["status"] == "proposed" }.map { |i| i["change_name"] }
+    puts "proposals waiting for approval: #{waiting.empty? ? "none" : waiting.join(", ")}"' "$ROOT/config/agent_proposals.json"
+fi
 for f in "$LOG"/blocked/*.json; do
   [ -f "$f" ] || continue
   ruby -rjson -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")); puts "BLOCKED: #{b["change_name"]} reason=#{b["reason"]} since=#{b["blocked_at"]}"' "$f"

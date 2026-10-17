@@ -15,6 +15,7 @@
 
 require 'optparse'
 require_relative 'lib/openspec_orchestrator'
+require_relative 'lib/agents'
 
 class OpenSpecDispatcher
   O = OpenSpecOrchestrator
@@ -24,9 +25,9 @@ class OpenSpecDispatcher
   DEFAULT_WAIT_TIMEOUT = Integer(ENV.fetch('OPENSPEC_WAIT_TIMEOUT', '1800'))
   GATE_TIMEOUT = Integer(ENV.fetch('OPENSPEC_GATE_TIMEOUT', '2700'))
   AGENT_TIMEOUT = Integer(ENV.fetch('AGENT_TIMEOUT_SECONDS', '3600'))
-  DEFAULT_ENGINE = ENV.fetch('AGENT_ENGINE', nil)
-  ENGINE_PLAN = ENV.fetch('AGENT_ENGINE_PLAN', DEFAULT_ENGINE)
-  ENGINE_BUILD = ENV.fetch('AGENT_ENGINE_BUILD', DEFAULT_ENGINE)
+  # The engine of each phase: its role in config/agents.yaml, unless an AGENT_ENGINE* variable overrides it.
+  ENGINE_PLAN = OpenSpecAgents.engine(O::ROOT, 'plan')
+  ENGINE_BUILD = OpenSpecAgents.engine(O::ROOT, 'build')
   # Workers never publish: strip push credentials from their environment.
   # A git credential helper such as osxkeychain is not covered: run workers as a
   # separate OS user, or in a container without one, to keep them from pushing.
@@ -707,8 +708,8 @@ if __FILE__ == $PROGRAM_NAME
     opts.on('-w', '--workers COUNT', Integer, 'Max concurrent workers (default: 2)') { |v| options[:max_workers] = v }
     opts.on('-r', '--repairs COUNT', Integer, 'Repair attempts per phase (default: 2)') { |v| options[:repair_attempts] = v }
     opts.on('-q', '--queue PATH', 'Backlog JSON (default: config/agent_backlog.json)') { |v| options[:backlog_file] = File.expand_path(v) }
-    opts.on('--engine-plan ENGINE', 'Engine for PLAN phase (default: $AGENT_ENGINE_PLAN or $AGENT_ENGINE)') { |v| options[:engine_plan] = v }
-    opts.on('--engine-build ENGINE', 'Engine for BUILD phase (default: $AGENT_ENGINE_BUILD or $AGENT_ENGINE)') { |v| options[:engine_build] = v }
+    opts.on('--engine-plan ENGINE', 'Engine for PLAN phase (default: roles.plan in config/agents.yaml)') { |v| options[:engine_plan] = v }
+    opts.on('--engine-build ENGINE', 'Engine for BUILD phase (default: roles.build in config/agents.yaml)') { |v| options[:engine_build] = v }
     opts.on('--wait [SECONDS]', Integer, 'Wait up to SECONDS (default: 1800) while changes wait on merges') do |v|
       options[:wait] = v || OpenSpecDispatcher::DEFAULT_WAIT_TIMEOUT
     end

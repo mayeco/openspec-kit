@@ -265,6 +265,18 @@ class OpenSpecMerger
     end
   end
 
+  # The repository's env_script prepares the shell of its gates, so it is protected like
+  # repo.config.yaml. Read from the fork point: a change cannot move it out of the way.
+  def env_script(child, fork)
+    res = O.git(['show', "#{fork}:repo.config.yaml"], chdir: child)
+    return [] unless res.ok?
+
+    path = (YAML.safe_load(res.out) || {})['env_script'].to_s.strip
+    path.empty? ? [] : [path]
+  rescue Psych::Exception
+    []
+  end
+
   # Worker commits live only in the worker worktree's private submodule store
   # (.git/worktrees/<wt>/modules/...), so fetch them from that path by SHA.
   def rebase_child!(m, path, head)
@@ -276,7 +288,7 @@ class OpenSpecMerger
     raise O::Blocked.new('missing_child_commits', "#{path}@#{worker_sha}: #{fetched.tail(5)}") unless fetched.ok?
 
     fork = O.git!(['merge-base', "#{O::REMOTE}/#{base}", worker_sha], chdir: child)
-    tampered = O.git!(['diff', '--name-only', fork, worker_sha, '--', *PROTECTED_CHILD_PATHS], chdir: child)
+    tampered = O.git!(['diff', '--name-only', fork, worker_sha, '--', *PROTECTED_CHILD_PATHS, *env_script(child, fork)], chdir: child)
     raise O::Blocked.new('policy_violation', "#{path}: protected paths changed: #{tampered.split.join(', ')}") unless tampered.empty?
 
     O.git!(['checkout', '--quiet', '-B', "integrate/#{m['change_name']}", worker_sha], chdir: child)

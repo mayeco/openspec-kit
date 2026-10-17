@@ -1,0 +1,12 @@
+{
+  "proposal": {
+    "change_name": "add-orders-status-filter",
+    "priority": "normal",
+    "source": "roadmap",
+    "description": "The roadmap's second item: operators need to filter the orders list by status. Add a status dropdown (all, pending, paid, shipped, cancelled) to the orders page that narrows the list without reloading it, and keep the choice in the URL so it can be shared. Acceptance: choosing a status shows only orders with that status, and the default shows all of them."
+  },
+  "roadmap": "# Roadmap\n\n1. Orders list (done)\n2. Filter the orders list by status\n3. Weekly sales summary email",
+  "existing_capabilities": ["orders", "customers", "authentication"],
+  "queued_changes": ["fix-order-total-rounding"],
+  "other_proposals": ["add-weekly-sales-email (proposed)"]
+}

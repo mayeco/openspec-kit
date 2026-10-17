@@ -2,20 +2,21 @@
 # ==============================================================================
 # bin/check_ai_engines.sh - Autonomous AI engine and judge preflight
 # ==============================================================================
-# Verifies the deterministic toolchain (git, openspec, ruby), that each installed
-# agent engine authenticates and answers a live ping, that the installed kit
-# matches its .openspec-kit.lock, and that the Jev judge passes its offline
-# contract and a live known-answer canary.
-# Exit 0 when the toolchain is complete, the kit has not drifted, at least one
-# agent engine works, the Jev question files are valid, and (only with
-# JEV_REQUIRED=1) the judge is OK.
+# Verifies the deterministic toolchain (git, openspec, ruby), that each agent
+# engine the application selected (config/agents.yaml; without it, every
+# supported engine that is installed) authenticates and answers a live ping,
+# that the installed kit matches its .openspec-kit.lock, and that the Jev judge
+# passes its offline contract and a live known-answer canary.
+# Exit 0 when the toolchain is complete, the kit has not drifted, the engine of
+# every role (plan, build, cycle) works, the Jev question files are valid, and
+# (only with JEV_REQUIRED=1) the judge is OK.
 set -o pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 90 "$@"; else "$@"; fi; }
-AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized"
+AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized|No authentication information found"
 
 echo "== Toolchain ($(date -u +%Y-%m-%dT%H:%M:%SZ), $(uname -sm))"
 MISSING=0
@@ -34,9 +35,20 @@ ruby bin/openspec_kit.rb verify . 2>&1 | sed 's/^/  /'
 [ "${PIPESTATUS[0]}" -eq 0 ] || KIT_OK=0
 
 echo "== Agent engines"
+# The agents config/agents.yaml selects, plus any engine an AGENT_ENGINE* override
+# gives a role; without the file, every supported engine that is installed.
+SELECTED="$(ruby bin/lib/agents.rb list 2>/dev/null)"
+ROLES=""
+for role in plan build cycle; do
+  engine="$(ruby bin/lib/agents.rb engine "$role" 2>/dev/null)"
+  ROLES="$ROLES $role:${engine:-first-available}"
+  [ -n "$SELECTED" ] && [ -n "$engine" ] && SELECTED="$SELECTED $engine"
+done
+SELECTED=" $SELECTED "
 WORKING=""
 probe() { # <name> <command...>
   local name="$1"; shift
+  [ "$SELECTED" = "  " ] || [[ "$SELECTED" == *" $name "* ]] || return 0
   command -v "$name" >/dev/null 2>&1 || { echo "  $name: not installed"; return; }
   local out
   out="$(bounded "$@" 2>&1)"
@@ -49,8 +61,18 @@ probe() { # <name> <command...>
   fi
 }
 probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.05 --no-session-persistence
+probe codex    codex exec "Reply with the single word: pong"
+probe copilot  copilot -p "Reply with the single word: pong" --silent
 probe hermes   hermes -z "Reply with the single word: pong"
 probe opencode opencode run "Reply with the single word: pong"
+
+# Every role must run on a working engine (stub: the kit's own tests).
+ROLE_FAIL=""
+for pair in $ROLES; do
+  engine="${pair#*:}"
+  case "$engine" in first-available|stub) ;; *) [[ " $WORKING " == *" $engine "* ]] || ROLE_FAIL="$ROLE_FAIL $pair" ;; esac
+done
+echo "  roles:$ROLES"
 
 # Jev is a judge, not an agent engine: it answers typed questions with
 # probabilities and never writes code, so it does not count toward WORKING.
@@ -100,8 +122,9 @@ echo "========================================================================"
 if [ "$MISSING" -eq 1 ]; then echo "preflight: FAIL (toolchain incomplete)"; exit 1; fi
 if [ "$KIT_OK" -eq 0 ]; then echo "preflight: FAIL (kit differs from .openspec-kit.lock: upgrade or reinstall it)"; exit 1; fi
 if [ -z "$WORKING" ]; then echo "preflight: FAIL (no working AI engine)"; exit 1; fi
+if [ -n "$ROLE_FAIL" ]; then echo "preflight: FAIL (the engine of a role is not working:$ROLE_FAIL)"; exit 1; fi
 if [ "$JUDGE" = invalid ]; then echo "preflight: FAIL (invalid Jev question files: a framework bug)"; exit 1; fi
 if [ "${JEV_REQUIRED:-0}" = 1 ] && [ "$JUDGE" != ok ]; then
   echo "preflight: FAIL (JEV_REQUIRED=1 and the judge is ${JUDGE})"; exit 1
 fi
-echo "preflight: OK (engines:${WORKING}; default: ${AGENT_ENGINE:-first available} [plan:${AGENT_ENGINE_PLAN:-default} build:${AGENT_ENGINE_BUILD:-default} cycle:${AGENT_ENGINE_CYCLE:-default}]; judge: ${JUDGE})"
+echo "preflight: OK (engines:${WORKING}; roles:${ROLES}; judge: ${JUDGE})"
