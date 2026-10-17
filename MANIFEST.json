@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.8.0",
-  "source_commit": "d3f1743edc938bc238525d09e2fa176d235f8237",
+  "version": "2.8.1",
+  "source_commit": "032e140f29c1eaefcd4e7e66c0f88f9d9a2bcb25",
   "source_dirty": false,
-  "built_at": "2026-10-17T16:02:02Z",
+  "built_at": "2026-10-17T16:57:12Z",
   "toolchain": {
     "openspec": "1.14.2",
     "git": "2.56.0",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "554f179b67b4f065dd17b9db5e2b164f96376850d421ec5a56eb5667521165a0"
+      "sha256": "8e73a809b4c2898df7521f3683f4c9b15656503635c4c955368b8ee42344b246"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -151,6 +151,10 @@
     "config/agent_proposals.json": {
       "class": "seed",
       "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "config/agents.yaml": {
+      "class": "seed",
+      "sha256": "7df25b319193f8fbdd925f3162545460cc4fca05a939d7f08e8f401f6f2bbe8a"
     },
     "config/cycle.yaml": {
       "class": "seed",

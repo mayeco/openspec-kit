@@ -20,7 +20,7 @@ The kit lets AI agents specify, build, verify and integrate an application with 
 git clone --branch v<version> <release-repository-url> openspec-kit    # the latest tag, for example v2.5.0
 ```
 
-A release holds `bin/` (the scripts, `bin/install.sh` included), `config/` (the templates and the default settings), `skills/` (the kit's skills, installed per agent), `MANIFEST.json` and the placeholder files of a new application.
+A release holds `bin/` (the scripts, `bin/install.sh` included), `config/` (the templates and the default settings, `agents.yaml` among them: the install writes the agents and roles you select into it), `skills/` (the kit's skills, installed per agent), `MANIFEST.json` and the placeholder files of a new application.
 
 ## 3. Install into the application
 
