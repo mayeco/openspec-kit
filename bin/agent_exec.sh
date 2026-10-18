@@ -4,7 +4,7 @@
 # ==============================================================================
 # Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine[,engine...]]
 #
-# Engines: claude, codex, copilot, hermes, opencode, and stub for the kit's tests.
+# Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), and stub for the kit's tests.
 # Callers pass the engines of their role from config/agents.yaml (bin/lib/agents.rb),
 # in order; without them it is $AGENT_ENGINE, then the first engine found on PATH.
 # Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
@@ -33,7 +33,7 @@ PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
-  for candidate in claude codex copilot hermes opencode; do
+  for candidate in claude codex copilot hermes opencode agy; do
     if command -v "$candidate" >/dev/null 2>&1; then ENGINES="$candidate"; break; fi
   done
 fi
@@ -87,7 +87,7 @@ tree_state() {
 # Out of quota or credits, or over a usage limit: such limits reset in hours, so trying the
 # engine again after limits.agent_retry_delay_seconds would only fail again. Only the end
 # of the attempt's output is read, where an engine says why it stopped.
-QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota'
+QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota|reached your [a-z ]*(quota|limit)'
 out_of_quota() { tail -n 40 "$ATTEMPT_OUT" | grep -qiE "$QUOTA_PATTERN"; }
 
 # What a failed attempt left, for the next one: every changed path and the size of each change.
@@ -149,6 +149,14 @@ run_engine() { # <engine>
       else
         bounded codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
       fi
+      ;;
+    agy)
+      # Google Antigravity's CLI. Its print mode gives up after --print-timeout (5 minutes by
+      # default): it gets the kit's limit, which bounded enforces anyway. restricted runs its
+      # terminal in Antigravity's sandbox, approving inside it, as Codex's --full-auto does.
+      SANDBOX=""
+      [ "$PERMISSIONS" = restricted ] && SANDBOX=--sandbox
+      bounded agy -p "$PROMPT" --print-timeout "${LIMIT}s" --dangerously-skip-permissions ${SANDBOX:+"$SANDBOX"}
       ;;
     copilot)
       DENY=()

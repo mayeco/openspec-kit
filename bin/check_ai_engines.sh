@@ -66,6 +66,7 @@ probe codex    codex exec "Reply with the single word: pong"
 probe copilot  copilot -p "Reply with the single word: pong" --silent
 probe hermes   hermes -z "Reply with the single word: pong"
 probe opencode opencode run "Reply with the single word: pong"
+probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s
 
 # Every role must have a working engine among its list (stub: the kit's own tests).
 # agent_exec.sh falls back along the list, so a dead fallback is only a warning.

@@ -127,6 +127,10 @@ hermes cron create "0 * * * *" "$(cat .agents/skills/openspec-kit-cycle/referenc
 
 OpenCode has no scheduler of its own. Use crontab (section 1). If `roles.cycle` is `opencode`, the script calls `opencode run` for the judgment by itself.
 
+### Google Antigravity (`agy`)
+
+Antigravity's CLI has no scheduler of its own. Use crontab (section 1). If `roles.cycle` is `agy`, the script calls `agy -p` for the judgment by itself.
+
 ## 3. The visual QA session
 
 The agent app must be open, logged in and able to drive a browser, on a computer that is awake. Checks wait in the queue (`log/cycle/visual_queue.json`) while it is not.

@@ -9,7 +9,7 @@
 # Inside an application, where it arrives with the rest of bin/, only
 # `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
 #
-# Agents: claude, codex, copilot, hermes, opencode. init installs the kit (bin/,
+# Agents: claude, codex, copilot, hermes, opencode, agy. init installs the kit (bin/,
 # config/templates/) and its skills in .agents/skills/, the directory agents
 # share, plus a copy for each other selected agent. It records the agents and, per role
 # (plan, build, cycle), the agent that runs it or several in order of preference

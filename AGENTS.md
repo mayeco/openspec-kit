@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here. `README.md` describes the product and `ROADMAP.md` what comes next.
+Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, Google Antigravity, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here. `README.md` describes the product and `ROADMAP.md` what comes next.
 
 ## 1. What this repository is
 

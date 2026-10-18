@@ -24,13 +24,14 @@
 require 'yaml'
 
 module OpenSpecAgents
-  # name => the `openspec init --tools` id and the directory its skills live in.
+  # name (the CLI's command) => the `openspec init --tools` id and the directory its skills live in.
   SUPPORTED = {
     'claude' => { 'tool' => 'claude', 'skills' => '.claude/skills' },
     'codex' => { 'tool' => 'codex', 'skills' => '.agents/skills' },
     'copilot' => { 'tool' => 'github-copilot', 'skills' => '.github/skills' },
     'hermes' => { 'tool' => 'hermes', 'skills' => '.hermes/skills' },
-    'opencode' => { 'tool' => 'opencode', 'skills' => '.opencode/skills' }
+    'opencode' => { 'tool' => 'opencode', 'skills' => '.opencode/skills' },
+    'agy' => { 'tool' => 'antigravity', 'skills' => '.agents/skills' } # Google Antigravity's CLI
   }.freeze
   ROLES = {
     'plan' => 'writes the OpenSpec artifacts of each backlog item',
@@ -128,7 +129,7 @@ module OpenSpecAgents
     lines.push('# all: agents may run any command (servers, curl, browsers, test tools), except the git',
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
                '# restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates',
-               '# and ask Jev; Codex keeps its workspace sandbox. Hermes, Copilot and OpenCode ignore it.',
+               '# and ask Jev; Codex and Antigravity (agy) keep their sandbox. Hermes, Copilot and OpenCode ignore it.',
                "permissions: #{permissions}")
     path = File.join(root, CONFIG)
     File.write(path, "#{lines.join("\n")}\n")
