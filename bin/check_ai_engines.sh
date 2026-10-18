@@ -51,22 +51,27 @@ probe() { # <name> <command...>
   local name="$1"; shift
   [ "$SELECTED" = "  " ] || [[ "$SELECTED" == *" $name "* ]] || return 0
   command -v "$name" >/dev/null 2>&1 || { echo "  $name: not installed"; return; }
-  local out
-  out="$(bounded "$@" 2>&1)"
+  local out rc=0
+  out="$(bounded "$@" 2>&1)" || rc=$?
   if printf '%s' "$out" | grep -qiE "$AUTH_ERRORS"; then
     echo "  $name: FAILED (authentication)"
-  elif [ -n "$out" ]; then
+  elif [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+    # It answered with an error (a missing model, a spent budget): output alone is no proof.
+    echo "  $name: FAILED (exit $rc: $(printf '%s' "$out" | sed $'s/\033\\[[0-9;]*m//g' | grep -v '^[[:space:]]*$' | tail -1 | cut -c1-160))"
+  elif [ "$rc" -eq 0 ] && [ -n "$out" ]; then
     echo "  $name: OK"; WORKING="$WORKING $name"
   else
     echo "  $name: WARN (empty response or timeout)"
   fi
 }
-probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.05 --no-session-persistence
+# A ping in a real workspace costs Claude Code about $0.07 (its context), so its cap is $0.50.
+probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.50 --no-session-persistence
 probe codex    codex exec "Reply with the single word: pong"
 probe copilot  copilot -p "Reply with the single word: pong" --silent
 probe hermes   hermes -z "Reply with the single word: pong"
 probe opencode opencode run "Reply with the single word: pong"
 probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s
+probe kilo     kilo run --agent code "Reply with the single word: pong"
 
 # Every role must have a working engine among its list (stub: the kit's own tests).
 # agent_exec.sh falls back along the list, so a dead fallback is only a warning.
@@ -83,6 +88,7 @@ for pair in $ROLES; do
   fi
 done
 echo "  roles:$ROLES"
+echo "  order: $(ruby bin/lib/agents.rb order 2>/dev/null)"
 
 # Jev is a judge, not an agent engine: it answers typed questions with
 # probabilities and never writes code, so it does not count toward WORKING.

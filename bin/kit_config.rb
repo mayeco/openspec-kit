@@ -9,16 +9,17 @@
 # openspec-kit-config skill reads it to explain the configuration and to change
 # it safely.
 #
-#   ruby bin/kit_config.rb show [agents|pipeline|cycle|exploration|jev|repos|env] [--json]
+#   ruby bin/kit_config.rb show [agents|pipeline|cycle|exploration|jev|repos|prompts|env] [--json]
 #   ruby bin/kit_config.rb check [--json]
 #   ruby bin/kit_config.rb set <file>.<key> <value> [--dry-run]
 #
 # show   the effective values, marking the ones left at their default, with the
 #        script that reads each one; env lists the environment variables that
-#        override a setting for one manual run.
+#        override a setting for one manual run; prompts lists the agents' prompts
+#        (config/prompts/, the application's own) and the placeholders each one uses.
 # check  validates config/agents.yaml, pipeline.yaml, cycle.yaml, exploration.yaml,
-#        jev_policy.yaml, the backlog, the proposals and every child repository's
-#        repo.config.yaml, and reports what would stop the next cycle: kit files
+#        jev_policy.yaml, the backlog, the proposals, the prompts and every child
+#        repository's repo.config.yaml, and reports what would stop the next cycle: kit files
 #        edited in place, uncommitted edits outside the cycle's write scope (its
 #        scope guard pauses the system), <file>.new left by an upgrade, a base
 #        branch origin lacks, an environment variable overriding a setting.
@@ -33,10 +34,12 @@
 #        by hand, then checked. Nothing is committed here.
 # ==============================================================================
 
+require 'digest'
 require 'json'
 require 'open3'
 require 'yaml'
 require_relative 'lib/agents'
+require_relative 'lib/prompts'
 require_relative 'lib/settings'
 require_relative 'cycle_prompt'
 
@@ -110,8 +113,12 @@ module KitConfig
             'bin/install.sh; bin/check_ai_engines.sh pings each one',
             change: '<release>/bin/install.sh upgrade <app> --agents LIST, from a checkout of the release: it installs their skills'),
     *OpenSpecAgents::ROLES.map { |role, does| setting("agents.roles.#{role}", :agents, 'the first agent CLI on PATH', "#{does}; agents in order; one that fails is tried again limits.agent_retries times, then the next continues its work", ROLE_READERS.fetch(role)) },
+    setting('agents.order', :enum, OpenSpecAgents::DEFAULT_ORDER,
+            "how each call picks among a role's agents. fallback: the first listed, then the next when one fails; " \
+            "random: any of them first, then the others in the order listed, spreading the calls over the agents' quotas (AGENT_ORDER overrides it for one run)",
+            'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::ORDERS),
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
-            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex sandboxed',
+            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo without --auto',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::PERMISSIONS),
     *PIPELINE.map { |key, (means, read_by)| setting("pipeline.#{key}", :pipeline, OpenSpecSettings::KEYS.fetch(key)[1], "#{means} (#{OpenSpecSettings::KEYS.fetch(key)[0]} overrides it for one run)", read_by) },
     setting('cycle.qa_time_budget_minutes', :int, 45, 'minutes the judgment may spend verifying and exploring',
@@ -160,6 +167,7 @@ module KitConfig
     *OpenSpecSettings::KEYS.map { |key, (var, _)| [var, nil, "overrides pipeline.#{key} of config/pipeline.yaml"] },
     ['OPENSPEC_PATH_PREFIX', '/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin', 'prepended to PATH by the scheduled scripts'],
     ['AGENT_ENGINE_PLAN, AGENT_ENGINE_BUILD, AGENT_ENGINE_CYCLE, AGENT_ENGINE', 'roles of config/agents.yaml', 'the agent of a role'],
+    ['AGENT_ORDER', 'order of config/agents.yaml', 'fallback | random'],
     ['AGENT_PERMISSIONS', 'permissions of config/agents.yaml', 'all | restricted'],
     ['OPENSPEC_REMOTE', 'origin', 'the remote the scripts fetch from and push to'],
     ['OPENSPEC_WORKTREE_BASE', '.worktrees', 'where the worktrees of changes live'],
@@ -288,6 +296,7 @@ module KitConfig
       out['jev']['jev_disabled'] = ENV['JEV_DISABLED'] == '1'
     end
     out['repos'] = child_paths.map { |rel| repo_view(rel) } if topic.nil? || topic == 'repos'
+    out['prompts'] = prompts_view if topic.nil? || topic == 'prompts'
     out['env'] = env_view if topic.nil? || topic == 'env'
     out
   end
@@ -346,6 +355,17 @@ module KitConfig
         end
       end
     end
+    if view['prompts']
+      lines << "== #{OpenSpecPrompts::DIR}/: the agents' prompts, this application's own (edit, then commit)"
+      view['prompts'].each do |p|
+        uses = if !p['present'] then 'MISSING'
+               elsif p['placeholders'].empty? then 'no placeholders'
+               else p['placeholders'].map { |x| "{{#{x}}}" }.join(', ')
+               end
+        lines << "  #{p['file']}: #{uses}#{p['edited'] ? ' (edited)' : ''}"
+        lines << "    #{p['for']}"
+      end
+    end
     if view['env']
       lines << '== Environment: overrides for one manual run, never in a scheduled command'
       view['env'].each do |e|
@@ -354,6 +374,26 @@ module KitConfig
       end
     end
     lines.join("\n")
+  end
+
+  PROMPT_ROLES = {
+    'plan' => 'the PLAN agent: writes the OpenSpec change of each backlog item (bin/openspec_dispatcher.rb)',
+    'build' => 'the BUILD agent: implements its tasks in the child repositories (bin/openspec_dispatcher.rb)',
+    'cycle' => "the cycle's judgment; bin/cycle_prompt.rb appends \"This cycle\" (bin/run_cycle.sh)"
+  }.freeze
+
+  # Each prompt, the placeholders it uses and whether it differs from what the kit installed.
+  def prompts_view
+    lock = (JSON.parse(File.read(File.join(ROOT, '.openspec-kit.lock'))) rescue {})
+    OpenSpecPrompts::PLACEHOLDERS.keys.map do |name|
+      rel = "#{OpenSpecPrompts::DIR}/#{name}.md"
+      path = File.join(ROOT, rel)
+      present = File.file?(path)
+      sha = lock.dig('files', rel, 'sha256')
+      { 'file' => rel, 'for' => PROMPT_ROLES.fetch(name), 'present' => present,
+        'placeholders' => present ? OpenSpecPrompts.placeholders(ROOT, name) : [],
+        'edited' => present && !sha.nil? && Digest::SHA256.file(path).hexdigest != sha }
+    end
   end
 
   # ------------------------------------------------------------------ check
@@ -607,6 +647,7 @@ module KitConfig
     end
     check_backlog(files['config/agent_backlog.json'] = { errors: [], warnings: [] })
     check_proposals(files['config/agent_proposals.json'] = { errors: [], warnings: [] })
+    files["#{OpenSpecPrompts::DIR}/"] = OpenSpecPrompts.problems(ROOT)
     child_paths.each { |rel| files["#{rel}/repo.config.yaml"] = repo_problems(rel) }
     files['application'] = application_problems
     files
@@ -616,7 +657,7 @@ module KitConfig
     report = { errors: [], warnings: [] }
     drift = kit_drift
     report[:errors] << "kit files edited in place (#{drift}): bash bin/install.sh verify" if drift
-    pending = Dir.glob(File.join(ROOT, '{*.md,config/*}.new')).map { |f| f.delete_prefix("#{ROOT}/") }
+    pending = Dir.glob(File.join(ROOT, '{*.md,config/*,config/prompts/*}.new')).map { |f| f.delete_prefix("#{ROOT}/") }
     report[:warnings] << "an upgrade left #{pending.join(', ')}: merge what you need into the file, then delete it" if pending.any?
     outside = git('status', '--porcelain', '--ignore-submodules=all', '--', '.', *SCOPE.map { |p| ":!#{p}" })
     if outside && !outside.empty?
@@ -763,7 +804,7 @@ module KitConfig
 end
 
 if __FILE__ == $PROGRAM_NAME
-  usage = "Usage: ruby bin/kit_config.rb show [agents|pipeline|cycle|exploration|jev|repos|env] [--json]\n" \
+  usage = "Usage: ruby bin/kit_config.rb show [agents|pipeline|cycle|exploration|jev|repos|prompts|env] [--json]\n" \
           "       ruby bin/kit_config.rb check [--json]\n" \
           '       ruby bin/kit_config.rb set <file>.<key> <value> [--dry-run]'
   # Flags by hand: a value given to set may start with a dash.
@@ -772,7 +813,7 @@ if __FILE__ == $PROGRAM_NAME
   dry_run = !args.delete('--dry-run').nil?
   begin
     case args
-    in ['show', *topic] if topic.size <= 1 && (topic.empty? || (KitConfig::FILES.keys + %w[repos env]).include?(topic.first))
+    in ['show', *topic] if topic.size <= 1 && (topic.empty? || (KitConfig::FILES.keys + %w[repos prompts env]).include?(topic.first))
       view = KitConfig.show(topic.first)
       puts(json ? JSON.pretty_generate(view) : KitConfig.show_text(view))
     in ['check']

@@ -23,7 +23,7 @@ AGENTS="$(ruby "$ROOT/bin/lib/agents.rb" list 2>/dev/null)"
 ROLES="$(for role in plan build cycle; do
   engine="$(ruby "$ROOT/bin/lib/agents.rb" engine "$role" 2>/dev/null)"; printf '%s: %s, ' "$role" "$(printf '%s' "${engine:-first on PATH}" | tr ',' '>')"
 done)"
-echo "AGENTS: ${AGENTS:-none selected (no config/agents.yaml)} (${ROLES%, }; permissions: $(ruby "$ROOT/bin/lib/agents.rb" permissions 2>/dev/null))"
+echo "AGENTS: ${AGENTS:-none selected (no config/agents.yaml)} (${ROLES%, }; order: $(ruby "$ROOT/bin/lib/agents.rb" order 2>/dev/null); permissions: $(ruby "$ROOT/bin/lib/agents.rb" permissions 2>/dev/null))"
 
 if [ -f "$LOG/cycle/state.json" ]; then
   ruby -rjson -e 'c = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")).fetch("last_cycle", {})

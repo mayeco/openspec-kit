@@ -3,13 +3,13 @@
 # bin/install.sh - Install, upgrade or verify the OpenSpec orchestration kit
 # ==============================================================================
 # From a checkout of the release tag you want (it holds MANIFEST.json):
-#   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]]
+#   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]] [--order fallback|random]
 #   bin/install.sh upgrade <app-dir> [--agents LIST --plan A[,B] ...] [--force]
 #   bin/install.sh verify <app-dir>
 # Inside an application, where it arrives with the rest of bin/, only
 # `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
 #
-# Agents: claude, codex, copilot, hermes, opencode, agy. init installs the kit (bin/,
+# Agents: claude, codex, copilot, hermes, opencode, agy, kilo. init installs the kit (bin/,
 # config/templates/) and its skills in .agents/skills/, the directory agents
 # share, plus a copy for each other selected agent. It records the agents and, per role
 # (plan, build, cycle), the agent that runs it or several in order of preference

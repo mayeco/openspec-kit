@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.11.0",
-  "source_commit": "b11ba0b777e91f466c487b56b40ad2eb1b7b8cc7",
+  "version": "2.12.0",
+  "source_commit": "061e3a0248e729e036b68c865515a905d4b722bb",
   "source_dirty": false,
-  "built_at": "2026-10-18T03:13:11Z",
+  "built_at": "2026-10-18T11:51:17Z",
   "toolchain": {
     "openspec": "1.14.2",
     "git": "2.56.0",
@@ -18,7 +18,7 @@
     },
     "AGENTS.md": {
       "class": "seed",
-      "sha256": "77619219e7a72f284e267dfd448ea1754bcb1e2b700c2f3a72b7309c8f9c1e88"
+      "sha256": "93f335f09773bd06cdbceae8da6311c0036e0f26d16b8e2361b4c6caadb7f5f5"
     },
     "CLAUDE.md": {
       "class": "seed",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "4c5c81370a29b824b696a118324eb7c99e0e2c2aa1f2e2b3abf39975186afb45"
+      "sha256": "cded1555436e51e703867e18c832444e8ce8d4b8957e49d4214d0973586e4481"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -34,7 +34,7 @@
     },
     "README.md": {
       "class": "seed",
-      "sha256": "15ba4d1ced2affabed3c0dbba8d8195e139a4bd236423d83c99b93aac7d2dd12"
+      "sha256": "a62df995a0f6816dd5dd3e88162c3422c2fec9fa2d868bf329b60ec282b6b962"
     },
     "ROADMAP.md": {
       "class": "seed",
@@ -42,11 +42,11 @@
     },
     "SCHEDULING.md": {
       "class": "kit",
-      "sha256": "cc618d7ee2f0a3b72613a2e40b90860609ebe6099093b724986d18ab052d92e7"
+      "sha256": "f063f2fdfab7d4b5e13c7c8e0ceffe01baea388f09d3e32be96e7888de87679f"
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "bd0a641197344cc8b3a5b40b4d2e2029db4ef0d69b78b2923a3bbc5aeeec6b2c"
+      "sha256": "cb0f7d193a4f502515cc299171525d5a11e784aca9b85b475623e87613607248"
     },
     "bin/app_setup.rb": {
       "class": "kit",
@@ -54,7 +54,7 @@
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "0488547f3470baba5e4e55a36c2671412ebf38b362af588996e48ed52cf10de3"
+      "sha256": "94c9e8a59b6f5bc2ceaa442db946720db332ba47900c09a5d8b458cba291925c"
     },
     "bin/completed_since.sh": {
       "class": "kit",
@@ -66,15 +66,15 @@
     },
     "bin/cycle_prompt.rb": {
       "class": "kit",
-      "sha256": "47650272e5d0f0a303e8224c6054f452a4d5608b476ae846dc46c0f6d32c4ec0"
+      "sha256": "0c4070e084026594a93185ecb8767dd3b571d4a838dcea39ec7b9666c2dd6f1e"
     },
     "bin/cycle_status.sh": {
       "class": "kit",
-      "sha256": "371f1d1ae71499d8d5ad612892d0820929e75ae7a39d844063011642d89a54bf"
+      "sha256": "e7990cf6cdcdeda69d72b20a09d2dce5e04fbf5971817189dd423abef81e6060"
     },
     "bin/install.sh": {
       "class": "kit",
-      "sha256": "0c1734404ad06e0a01a6386735d14de6ba4f15ee34308cf87343691d29c25dc4"
+      "sha256": "abbf8241cdc28d8243fc0e3b872ace3beba7a191b5f40146dbb5a942323a2835"
     },
     "bin/jev_contract.sh": {
       "class": "kit",
@@ -86,15 +86,19 @@
     },
     "bin/kit_config.rb": {
       "class": "kit",
-      "sha256": "a16258e54ee609dcd843e385577915557893056c876e9a1afc3db4f841661804"
+      "sha256": "02909c62625d8d88ad0d421a842f4f7fcad54d77155c7149ce0380c1cf0c7b21"
     },
     "bin/lib/agents.rb": {
       "class": "kit",
-      "sha256": "894abeaf7011d4067199e2b79c3a019048b170ef01180e241460bdb9e4e95e14"
+      "sha256": "ca6c829f26407d0785f5ebb47fb5f3b8f4d2631e3986f64d7793cf8858e2216e"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
       "sha256": "8bcbaa1364a7f0c5de922844c9f402720fb86bc28391b8c645cf99add59f59be"
+    },
+    "bin/lib/prompts.rb": {
+      "class": "kit",
+      "sha256": "87939f0f09b483c8dd345064b43b94d10b4bfad92c589ff91a11512962e2c8f9"
     },
     "bin/lib/record.sh": {
       "class": "kit",
@@ -106,11 +110,11 @@
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "4b8d23bbbd2cb3138daf7801856ffa0561f9c2e8a07636ff8333709a48bc79d9"
+      "sha256": "96299971862e41f77f140d8d762089831844192417869409c6b261fb05549de1"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "c23379d0b3c851086eb34a00a7ba625b66a75ad254f2a75e4d3f7420e49e3319"
+      "sha256": "156c62bbe48e88b8d6f55f4912884058f0a2851ca5f448bc20887ab9cd0dfc7d"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
@@ -154,7 +158,7 @@
     },
     "config/agents.yaml": {
       "class": "seed",
-      "sha256": "c5ffb90f31cf54f03e0da3dbd36fa312d518b81ce7eea8869c465161fb223f9d"
+      "sha256": "a86250e921366b2a7e6b38004014f27c056cbfbcaf1fad3b779744d69959bf97"
     },
     "config/cycle.yaml": {
       "class": "seed",
@@ -172,13 +176,21 @@
       "class": "seed",
       "sha256": "bc4877cfb8e3a117548f990d1132a4befcfec1b498951a255c2baf719142b58a"
     },
+    "config/prompts/build.md": {
+      "class": "seed",
+      "sha256": "8dc48f6c37c0ebdadb0904eb7f5ce2d81ccc01074fdd13166dfef99c857e637b"
+    },
+    "config/prompts/cycle.md": {
+      "class": "seed",
+      "sha256": "a7ad632316a7174b682ba1b76ac50cdb0fca8a6ac42c2bf596bf57b1d30ea648"
+    },
+    "config/prompts/plan.md": {
+      "class": "seed",
+      "sha256": "21840fba6f2961b40eafa0f593c49ab1ad604dc882535024a93d42ca96334286"
+    },
     "config/templates/authoring_rules.md": {
       "class": "kit",
       "sha256": "ee73507b8e7d63ef9cec3852c149f67139b57dd42e5980c6f38c6bee8da0fd7a"
-    },
-    "config/templates/cycle_prompt.md": {
-      "class": "kit",
-      "sha256": "b7d90e1b3653872da356907b3ffd569fd14bf7040bf1ad907f4e39521b724278"
     },
     "config/templates/cycle_state.json": {
       "class": "kit",
@@ -286,11 +298,11 @@
     },
     "skills/openspec-kit-config/SKILL.md": {
       "class": "skill",
-      "sha256": "bc143cee0bba8893a05985d5e6bc290187f1e750ac59ab11edbbc7de11e897fb"
+      "sha256": "72ac60edb5d8053508ccbb3780d68ee6c56065e255d7a00332563fdd1266e587"
     },
     "skills/openspec-kit-cycle/SKILL.md": {
       "class": "skill",
-      "sha256": "1dea3a7a4c5690e639d7afb679c0e268e99d47b87cd86d656792eb6c584a5f8e"
+      "sha256": "4370837ae8afa33aba9010ab5c8834325611cf007d7a3cad3086ac8e14b0ac17"
     },
     "skills/openspec-kit-cycle/references/report.template.md": {
       "class": "skill",

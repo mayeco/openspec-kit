@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, Google Antigravity, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here. `README.md` describes the product and `ROADMAP.md` what comes next.
+Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, Google Antigravity, Kilo Code, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here. `README.md` describes the product and `ROADMAP.md` what comes next.
 
 ## 1. What this repository is
 
@@ -13,7 +13,8 @@ The umbrella of the application, built specification first with [OpenSpec](https
 ├── repos/<name>/            the application's code, one git submodule per repository
 │   └── repo.config.yaml     its base branch, gates, regression suite, dev command, env_script
 ├── config/                  settings the scripts read: agents.yaml, pipeline.yaml, cycle.yaml,
-│                            exploration.yaml, jev_policy.yaml; the backlog and the proposals
+│                            exploration.yaml, jev_policy.yaml; the backlog and the proposals;
+│                            prompts/: the agents' prompts (plan.md, build.md, cycle.md)
 ├── bin/  config/templates/  the kit: scripts and templates (replaced on upgrade)
 ├── .agents/skills/          the kit's skills (openspec-kit-*) and OpenSpec's
 ├── MEMORY.md                long-term memory

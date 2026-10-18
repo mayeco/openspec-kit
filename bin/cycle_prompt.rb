@@ -4,8 +4,8 @@
 # ==============================================================================
 # bin/cycle_prompt.rb
 #
-# Renders the judgment agent's prompt for one scheduled cycle: the fixed
-# instructions of config/templates/cycle_prompt.md, followed by this cycle's plan,
+# Renders the judgment agent's prompt for one scheduled cycle: the application's
+# own instructions in config/prompts/cycle.md (a seed), followed by this cycle's plan,
 # which the script decides so that no model has to remember it:
 #   - the exploration strategy, picked from config/exploration.yaml in
 #     rotation (or at random, never one of the most recent half again). With
@@ -25,12 +25,12 @@ require 'fileutils'
 require 'json'
 require 'optparse'
 require 'yaml'
+require_relative 'lib/prompts'
 
 Encoding.default_external = Encoding::UTF_8
 
 module CyclePrompt
   ROOT = File.expand_path('..', __dir__)
-  TEMPLATE = File.join(ROOT, 'config', 'templates', 'cycle_prompt.md')
   CYCLE = File.join(ROOT, 'config', 'cycle.yaml')
   EXPLORATION = File.join(ROOT, 'config', 'exploration.yaml')
   STATE = File.join(ROOT, 'log', 'cycle', 'strategy_state.json')
@@ -123,7 +123,7 @@ module CyclePrompt
                      "#{(roadmap['max_open'] || 3).to_i} roadmap proposals are still proposed, approved or queued."
                    end
     <<~MD
-      #{File.read(TEMPLATE).chomp}
+      #{OpenSpecPrompts.render(ROOT, 'cycle').chomp}
 
       ## This cycle (decided by the script)
 

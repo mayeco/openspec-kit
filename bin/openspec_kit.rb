@@ -215,7 +215,7 @@ module OpenSpecKit
     end
   end
 
-  def init(source, target, agents:, roles:, force:)
+  def init(source, target, agents:, roles:, force:, order: nil)
     manifest = manifest!(source)
     raise Error, "#{target} already has #{LOCK}: use upgrade" if File.exist?(File.join(target, LOCK))
 
@@ -232,7 +232,7 @@ module OpenSpecKit
     plan.each { |dest, from| copy(source, target, from, to: dest) }
     seeded = files(manifest, 'seed').keys.reject { |rel| File.exist?(File.join(target, rel)) }
     seeded.each { |rel| copy(source, target, rel) }
-    OpenSpecAgents.write(target, agents, roles)
+    OpenSpecAgents.write(target, agents, roles, order: order)
     append_gitignore(target)
     # The framework's authoring rules travel with the kit (config/templates/authoring_rules.md).
     openspec_init(target, agents)
@@ -376,6 +376,7 @@ if __FILE__ == $PROGRAM_NAME
     OpenSpecAgents::ROLES.each do |role, does|
       opts.on("--#{role} AGENTS", "The agent that #{does}, or a comma list in order of preference") { |v| options[:roles][role] = v }
     end
+    opts.on('--order ORDER', "init: how each call picks among a role's agents: #{OpenSpecAgents::ORDERS.join(' or ')} (default #{OpenSpecAgents::DEFAULT_ORDER})") { |v| options[:order] = v }
     opts.on('--force', 'init: replace existing kit files; upgrade: discard edits to kit files') { options[:force] = true }
   end
   args = parser.parse(ARGV)
@@ -389,8 +390,10 @@ if __FILE__ == $PROGRAM_NAME
 
       selection = { agents: options[:agents], roles: options[:roles], force: options[:force] }
       if command == 'init'
-        OpenSpecKit.init(options[:source], target, **selection)
+        OpenSpecKit.init(options[:source], target, **selection, order: options[:order])
       else
+        raise OpenSpecKit::Error, 'upgrade takes no --order: ruby bin/kit_config.rb set agents.order <order> in the application' if options[:order]
+
         OpenSpecKit.upgrade(options[:source], target, **selection)
       end
     when 'verify'

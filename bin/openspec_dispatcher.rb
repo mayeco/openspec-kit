@@ -16,6 +16,7 @@
 require 'optparse'
 require_relative 'lib/openspec_orchestrator'
 require_relative 'lib/agents'
+require_relative 'lib/prompts'
 
 class OpenSpecDispatcher
   O = OpenSpecOrchestrator
@@ -884,56 +885,25 @@ class OpenSpecDispatcher
     HINT
   end
 
+  # The prompts are the application's own (config/prompts/plan.md and build.md, seeds
+  # the kit creates once); bin/lib/prompts.rb fills their placeholders.
   def plan_prompt(item, feedback)
     change = item['change_name']
-    <<~PROMPT
-      You are the PLANNING agent for OpenSpec change "#{change}" in this git worktree.
-      Goal: #{item['description'] || item['why'] || change}
-
-      Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.
-
-      Follow the openspec-propose workflow:
-      1. Run `openspec status --change #{change} --json`, then for each artifact in dependency order run
-         `openspec instructions <artifact-id> --change #{change} --json` and write that artifact.
-      2. Keep every file inside openspec/changes/#{change}/ (proposal.md, specs/<capability>/spec.md, design.md, tasks.md).
-         The delta of a capability that has no openspec/specs/<capability>/ yet starts with a `## Purpose` section
-         (at least 50 characters): archiving copies it into the new canonical spec, and strict validation requires it.
-      3. Run `openspec validate #{change} --strict --json` and fix every reported issue.
-
-      If the requirements contradict each other in a way that affects data integrity or security, write the
-      question to openspec/changes/#{change}/.needs-human and stop: a human will answer it.
-      #{jev_hint}
-      #{authoring_rules}
-      Hard rules: never edit openspec/specs/ or anything outside openspec/changes/#{change}/;
-      never commit, push, reset or switch branches.
-      #{feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''}
-    PROMPT
+    OpenSpecPrompts.render(O::ROOT, 'plan',
+                           'change' => change, 'goal' => item['description'] || item['why'] || change,
+                           'jev_hint' => jev_hint, 'authoring_rules' => authoring_rules, 'feedback' => feedback_block(feedback))
   end
 
   def apply_prompt(item, branch, feedback, rebuild: nil)
-    change = item['change_name']
-    <<~PROMPT
-      You are the IMPLEMENTATION agent for OpenSpec change "#{change}" in this git worktree.
+    OpenSpecPrompts.render(O::ROOT, 'build',
+                           'change' => item['change_name'], 'branch' => branch, 'jev_hint' => jev_hint,
+                           'authoring_rules' => authoring_rules, 'feedback' => feedback_block(feedback),
+                           'rebuild' => rebuild ? "\nThis change is being built again on the current base branch:\n#{rebuild}" : '')
+  end
 
-      Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.
-
-      Follow the openspec-apply-change workflow: run `openspec instructions apply --change #{change} --json`
-      and implement the pending tasks in order.
-      - Application code lives in the child repositories under repos/, each already on branch #{branch}.
-      - Pair every behavior change with automated tests. Mark a task `- [x]` only after its verification passes.
-      - Run `bash bin/run_gates.sh` before you finish and fix every failure.
-      - Write non-obvious lessons (pitfalls, required flags, environment quirks) to
-        openspec/changes/#{change}/handoff.md. Do not edit MEMORY.md: the scheduled cycle curates it from handoff.md.
-
-      If you hit a contradiction or a decision that needs a human (data migration, security trade-off),
-      write the question to openspec/changes/#{change}/.needs-human and stop.
-      #{jev_hint}
-      #{authoring_rules}
-      Hard rules: never edit openspec/specs/; never push, reset, rebase or switch branches;
-      never edit repos/*/repo.config.yaml or CI configuration; only modify repos/ and openspec/changes/#{change}/.
-      #{feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''}
-      #{rebuild ? "\nThis change is being built again on the current base branch:\n#{rebuild}" : ''}
-    PROMPT
+  # A repair round gets exactly what failed verification.
+  def feedback_block(feedback)
+    feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''
   end
 end
 

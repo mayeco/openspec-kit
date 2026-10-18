@@ -1,6 +1,6 @@
 ---
 name: openspec-kit-config
-description: Explains and changes the settings of an application built with the OpenSpec orchestration kit. Covers the agents, their roles and permissions (config/agents.yaml), the base branch, parallelism and limits (config/pipeline.yaml), and the cycle's budget, roadmap, proposal approval and visual QA (config/cycle.yaml). Also covers the exploration strategies (config/exploration.yaml), the Jev gates (config/jev_policy.yaml), each child repository's repo.config.yaml and the environment overrides. Use when asked what a setting does, how the system is configured or why it behaves a certain way. Also use to change a setting, an agent's role, a strategy, a gate, the approval mode or the visual session.
+description: Explains and changes the settings of an application built with the OpenSpec orchestration kit. Covers the agents, their roles and permissions (config/agents.yaml), the base branch, parallelism and limits (config/pipeline.yaml), and the cycle's budget, roadmap, proposal approval and visual QA (config/cycle.yaml). Also covers the exploration strategies (config/exploration.yaml), the Jev gates (config/jev_policy.yaml), each child repository's repo.config.yaml, the agents' prompts (config/prompts/) and the environment overrides. Use when asked what a setting does, how the system is configured or why it behaves a certain way. Also use to change a setting, an agent's role or prompt, a strategy, a gate, the approval mode or the visual session.
 ---
 
 # OpenSpec kit configuration: understand it, change it safely
@@ -27,6 +27,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | The question | The settings |
 | :--- | :--- |
 | Who plans, builds, judges? | `agents.roles.plan`, `.build`, `.cycle`: each a list of agents in order; one that fails is tried again `pipeline.limits.agent_retries` times, then the next one continues its work; the agents themselves: `agents.agents` |
+| Which agent starts? Can the work spread over several quotas? | `agents.order`: `fallback` (always the role's first agent) or `random` (any of them first, then the others in the order listed) |
 | What may agents run? | `agents.permissions`: `all`, or `restricted` |
 | How long does a cycle spend, and on what? | `cycle.qa_time_budget_minutes`, `cycle.exploration.minutes`, the strategies of `config/exploration.yaml` and their `order` |
 | How much new work per cycle? | `cycle.exploration.max_new_backlog_items_per_cycle`, `cycle.roadmap.max_new_per_cycle`, `cycle.roadmap.max_open` |
@@ -37,6 +38,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | Which branch? | `pipeline.base_branch` for the application, `base_branch` in each child repository's `repo.config.yaml` |
 | How many changes at once, and how long may things take? | `pipeline.dispatch.workers`, `pipeline.dispatch.wait_seconds`, `pipeline.limits.agent_seconds`, `.agent_budget_usd`, `.gate_seconds`, `.lease_seconds` |
 | What happens to conflicts and to low items? | `pipeline.dispatch.conflict_rebuilds` (automatic rebuilds on the new base before `rebase_conflict`), `pipeline.dispatch.aging_hours` (one priority up per that many hours waiting) |
+| What do the agents read? | `config/prompts/plan.md`, `build.md`, `cycle.md`: the prompts, this application's own (`show prompts`) |
 | When does it run? | The schedules (`SCHEDULING.md`), not a setting |
 
 ## Change
@@ -62,6 +64,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | :--- | :--- |
 | The agents an application uses | `<release>/bin/install.sh upgrade <app> --agents LIST [--plan A --build A --cycle A]`, from a checkout of the release. It installs or removes their skills, on a branch for review |
 | A child repository's gates, dev command, base branch or `env_script` | Edit `repos/<name>/repo.config.yaml` in the child repository, commit there and push to its base branch, then commit the new pointer in the application. The pipeline's agents may never change these files: the merger blocks it. The `openspec-kit-init` skill sets them up |
+| An agent's prompt (`show prompts`) | Edit `config/prompts/plan.md`, `build.md` or `cycle.md` by hand: keep the `{{placeholders}}` its header comment names (`{{feedback}}` above all: without it a repair round never sees what failed), run `check`, show the result with `ruby bin/lib/prompts.rb render <name> change=demo ...`, then commit it like a setting |
 | An environment variable (`show env`) | Only for one manual run, such as a test or a retry; never in a scheduled prompt or a crontab line. Each setting of `config/pipeline.yaml` has one that overrides it, and `check` warns while one is set |
 | `bin/`, `config/templates/`, the `openspec-kit-*` skills, `INSTALL.md`, `SCHEDULING.md` | Never edit them: they are the kit's. An upgrade replaces them, and the preflight fails while they differ. A need there is a change to the framework |
 | `<file>.new` next to a setting after an upgrade | The new template. Merge what you need into the file, then delete the `.new` |

@@ -13,7 +13,7 @@ Two scheduled jobs keep an application moving. Both run from the application's r
 | :--- | :--- | :--- |
 | Cycle task | `.agents/skills/openspec-kit-cycle/references/routine-prompt.md` | A Claude or Hermes app task that runs the cycle. **crontab needs no prompt**: it runs the script directly |
 | Visual QA task | `.agents/skills/openspec-kit-visual-qa/references/routine-prompt.md` | The Claude or Hermes app task of the visual QA session |
-| The judgment's own prompt | `config/templates/cycle_prompt.md`, plus "This cycle", rendered into `log/cycle/prompt-<stamp>.md` | `bin/run_cycle.sh`, for the headless judgment agent. **Never schedule it**: the script writes it each cycle |
+| The judgment's own prompt | `config/prompts/cycle.md` (the application's to edit), plus "This cycle", rendered into `log/cycle/prompt-<stamp>.md` | `bin/run_cycle.sh`, for the headless judgment agent. **Never schedule it**: the script writes it each cycle |
 
 The same files are in the skills directory of every selected agent (`.claude/skills/`, `.github/skills/`, ...). Copy the prompts as they are and never add settings to them, nor to a crontab line: the scripts read every setting from `config/` (`config/agents.yaml`, `config/pipeline.yaml`, `config/cycle.yaml`, `config/exploration.yaml`, `config/jev_policy.yaml`).
 
@@ -130,6 +130,10 @@ OpenCode has no scheduler of its own. Use crontab (section 1). If `roles.cycle` 
 ### Google Antigravity (`agy`)
 
 Antigravity's CLI has no scheduler of its own. Use crontab (section 1). If `roles.cycle` is `agy`, the script calls `agy -p` for the judgment by itself.
+
+### Kilo Code (`kilo`)
+
+Kilo's CLI has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `kilo`, the script calls `kilo run --agent code` for the judgment by itself.
 
 ## 3. The visual QA session
 

@@ -4,7 +4,7 @@
 # ==============================================================================
 # Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine[,engine...]]
 #
-# Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), and stub for the kit's tests.
+# Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), kilo, and stub for the kit's tests.
 # Callers pass the engines of their role from config/agents.yaml (bin/lib/agents.rb),
 # in order; without them it is $AGENT_ENGINE, then the first engine found on PATH.
 # Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
@@ -13,7 +13,10 @@
 # skipped at once, and so is one that says it is out of quota or over a usage limit,
 # which a short wait does not lift. An attempt that left changes in the work directory
 # is followed by one told, in its prompt, who stopped and what is there, to continue
-# from that state. The caller verifies the result as always. Every
+# from that state. With `order: random` in config/agents.yaml (or $AGENT_ORDER) the call
+# starts with any engine of the list, then the others in the order listed: calls spread
+# over the agents' quotas instead of always draining the first one's.
+# The caller verifies the result as always. Every
 # invocation is bounded by a wall-clock timeout, limits.agent_seconds of
 # config/pipeline.yaml (bin/lib/settings.rb). The exit code is the last engine's
 # exit code (124 = timeout), or 75 when every engine failed and the work directory is
@@ -30,10 +33,11 @@ PROMPT="$(cat "$PROMPT_FILE")"
 SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
 LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
 PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
+ORDER="$(ruby "$(dirname "$0")/lib/agents.rb" order)"   # fallback | random
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
-  for candidate in claude codex copilot hermes opencode agy; do
+  for candidate in claude codex copilot hermes opencode agy kilo; do
     if command -v "$candidate" >/dev/null 2>&1; then ENGINES="$candidate"; break; fi
   done
 fi
@@ -87,7 +91,7 @@ tree_state() {
 # Out of quota or credits, or over a usage limit: such limits reset in hours, so trying the
 # engine again after limits.agent_retry_delay_seconds would only fail again. Only the end
 # of the attempt's output is read, where an engine says why it stopped.
-QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota|reached your [a-z ]*(quota|limit)'
+QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota|reached your [a-z ]*(quota|limit)|insufficient (balance|credits)'
 out_of_quota() { tail -n 40 "$ATTEMPT_OUT" | grep -qiE "$QUOTA_PATTERN"; }
 
 # What a failed attempt left, for the next one: every changed path and the size of each change.
@@ -158,6 +162,16 @@ run_engine() { # <engine>
       [ "$PERMISSIONS" = restricted ] && SANDBOX=--sandbox
       bounded agy -p "$PROMPT" --print-timeout "${LIMIT}s" --dangerously-skip-permissions ${SANDBOX:+"$SANDBOX"}
       ;;
+    kilo)
+      # Kilo Code's CLI. run is headless; its code agent edits (the default one, ask, does
+      # not). all approves every tool its rules do not deny (--auto); restricted leaves
+      # Kilo's own permission rules in charge.
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded kilo run --agent code "$PROMPT"
+      else
+        bounded kilo run --agent code --auto "$PROMPT"
+      fi
+      ;;
     copilot)
       DENY=()
       IFS=',' read -ra RULES <<< "$COPILOT_DENIED"
@@ -178,6 +192,14 @@ run_engine() { # <engine>
 cd "$WORKDIR"
 [ -n "$ENGINES" ] || { echo "agent_exec: no AI engine available (set AGENT_ENGINE)" >&2; exit 127; }
 IFS=',' read -ra LIST <<< "$ENGINES"
+if [ "$ORDER" = random ] && [ "${#LIST[@]}" -gt 1 ]; then
+  # Any engine first, then the others in the order listed.
+  pick=$((RANDOM % ${#LIST[@]}))
+  rest=()
+  for k in "${!LIST[@]}"; do [ "$k" -eq "$pick" ] || rest+=("${LIST[$k]}"); done
+  LIST=("${LIST[$pick]}" "${rest[@]}")
+  echo "agent_exec: order random: $(IFS=,; echo "${LIST[*]}" | tr -d '[:space:]')" >&2
+fi
 RETRIES="$(ruby "$SETTINGS" get limits.agent_retries)"
 RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
 BASE_PROMPT="$PROMPT"
