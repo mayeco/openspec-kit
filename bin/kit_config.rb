@@ -92,7 +92,7 @@ module KitConfig
                                      'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
     'dispatch.aging_hours' => ['every this many hours an item waits, it is ordered one priority higher; 0: off', 'bin/openspec_dispatcher.rb'],
     'limits.agent_seconds' => ['limit of one agent call', 'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
-    'limits.agent_retries' => ['extra attempts with the same agent after a failure, before the next agent of the role; 0: none',
+    'limits.agent_retries' => ['extra attempts with the same agent after a failure, before the next agent of the role (none after a usage limit); 0: none',
                                'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
     'limits.agent_retry_delay_seconds' => ['wait before trying the same agent again', 'bin/agent_exec.sh'],
     'limits.agent_budget_usd' => ["Claude Code's spending cap per call", 'bin/agent_exec.sh'],

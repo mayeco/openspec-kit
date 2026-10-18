@@ -51,6 +51,11 @@ for f in "$LOG"/blocked/*.json; do
   [ -f "$f" ] || continue
   ruby -rjson -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")); puts "BLOCKED: #{b["change_name"]} reason=#{b["reason"]} since=#{b["blocked_at"]}"' "$f"
 done
+# Changes whose agents could not work (every engine failed without changing anything):
+# they run again in the next dispatch; the third time in a row is engine_unavailable.
+if [ -s "$LOG/deferrals.json" ]; then
+  ruby -rjson -e '(JSON.parse(File.read(ARGV[0], encoding: "UTF-8")) rescue {}).each { |c, n| puts "DEFERRED: #{c} (#{n} of 3: no engine could work)" }' "$LOG/deferrals.json"
+fi
 for f in "$LOG"/locks/*.lock; do
   case "$(basename "$f")" in dispatcher.lock|merger.lock) continue ;; esac
   [ -f "$f" ] && echo "LEASE: $(basename "$f" .lock)"

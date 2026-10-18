@@ -10,12 +10,15 @@
 # Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
 # logged in, timed out) is tried again limits.agent_retries times
 # (config/pipeline.yaml), then the next engine runs; one that is not installed is
-# skipped at once. An attempt that left changes in the work directory is followed by
-# one told, in its prompt, who stopped and what is there, to continue from that state.
-# The caller verifies the result as always. Every
+# skipped at once, and so is one that says it is out of quota or over a usage limit,
+# which a short wait does not lift. An attempt that left changes in the work directory
+# is followed by one told, in its prompt, who stopped and what is there, to continue
+# from that state. The caller verifies the result as always. Every
 # invocation is bounded by a wall-clock timeout, limits.agent_seconds of
-# config/pipeline.yaml (bin/lib/settings.rb). The exit code is the engine's
-# exit code (124 = timeout). What agents may do is `permissions` in
+# config/pipeline.yaml (bin/lib/settings.rb). The exit code is the last engine's
+# exit code (124 = timeout), or 75 when every engine failed and the work directory is
+# as it was: no engine could work, so the caller tries again later instead of counting
+# a failed attempt at the task. What agents may do is `permissions` in
 # config/agents.yaml (or $AGENT_PERMISSIONS): all, the default, or restricted.
 # Callers MUST NOT trust the agent's own success claim: verify post-conditions
 # (openspec validate, task counts, quality gates) after every call.
@@ -80,6 +83,12 @@ tree_state() {
     true # outside a git checkout every command above fails; the state is then constant
   } | cksum
 }
+
+# Out of quota or credits, or over a usage limit: such limits reset in hours, so trying the
+# engine again after limits.agent_retry_delay_seconds would only fail again. Only the end
+# of the attempt's output is read, where an engine says why it stopped.
+QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota'
+out_of_quota() { tail -n 40 "$ATTEMPT_OUT" | grep -qiE "$QUOTA_PATTERN"; }
 
 # What a failed attempt left, for the next one: every changed path and the size of each change.
 changes_left() {
@@ -165,9 +174,11 @@ RETRIES="$(ruby "$SETTINGS" get limits.agent_retries)"
 RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
 BASE_PROMPT="$PROMPT"
 RUN_PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-prompt.XXXXXX")" # the stub reads its prompt from a file
-trap 'rm -f "$RUN_PROMPT_FILE"' EXIT
+ATTEMPT_OUT="$(mktemp "${TMPDIR:-/tmp}/agent-out.XXXXXX")" # one attempt's output, read for a usage limit
+trap 'rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT"' EXIT
 START="$(tree_state)"
 rc=127
+ran=0
 for i in "${!LIST[@]}"; do
   engine="$(printf '%s' "${LIST[$i]}" | tr -d '[:space:]')"
   [ -n "$engine" ] || continue
@@ -175,16 +186,22 @@ for i in "${!LIST[@]}"; do
   while :; do
     printf '%s' "$PROMPT" > "$RUN_PROMPT_FILE"
     rc=0
-    run_engine "$engine" || rc=$?
+    run_engine "$engine" > "$ATTEMPT_OUT" 2>&1 || rc=$?
+    cat "$ATTEMPT_OUT"
     # Parsed by the dispatcher for its agent.exit event.
     echo "agent_exec: engine $engine exited $rc" >&2
     [ "$rc" -eq 0 ] && exit 0
     [ "$rc" -eq 127 ] && break # not installed or unknown: no point trying it again
+    ran=1
     if [ "$(tree_state)" != "$START" ]; then
       reason="exit $rc"
       [ "$rc" -eq 124 ] && reason="it hit the time limit"
       PROMPT="$BASE_PROMPT
 $(continuation_note "$engine ($reason)")"
+    fi
+    if out_of_quota; then
+      echo "agent_exec: $engine is out of quota or over a usage limit; not trying it again" >&2
+      break
     fi
     try=$((try + 1))
     [ "$try" -gt "$RETRIES" ] && break
@@ -194,4 +211,8 @@ $(continuation_note "$engine ($reason)")"
   next="${LIST[$((i + 1))]:-}"
   [ -n "$next" ] && echo "agent_exec: $engine failed (exit $rc); trying $next" >&2
 done
+if [ "$ran" = 1 ] && [ "$(tree_state)" = "$START" ]; then
+  echo "agent_exec: no engine could work (each failed without changing anything); exit 75: try again later" >&2
+  exit 75
+fi
 exit "$rc"

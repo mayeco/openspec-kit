@@ -26,7 +26,7 @@ module OpenSpecSettings
     'dispatch.workers' => ['OPENSPEC_WORKERS', 2],
     'dispatch.wait_seconds' => ['OPENSPEC_WAIT_TIMEOUT', 3600],
     'dispatch.merge_interval_seconds' => ['OPENSPEC_MERGE_INTERVAL', 10],
-    'dispatch.conflict_rebuilds' => ['OPENSPEC_CONFLICT_REBUILDS', 1],
+    'dispatch.conflict_rebuilds' => ['OPENSPEC_CONFLICT_REBUILDS', 3],
     'dispatch.aging_hours' => ['OPENSPEC_AGING_HOURS', 6],
     'limits.agent_seconds' => ['AGENT_TIMEOUT_SECONDS', 7200],
     'limits.agent_retries' => ['AGENT_RETRIES', 1],

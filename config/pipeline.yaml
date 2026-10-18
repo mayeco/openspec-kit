@@ -18,8 +18,9 @@ dispatch:
   merge_interval_seconds: 10 # how often a watching merger looks for ready changes; OPENSPEC_MERGE_INTERVAL
   # A change whose code no longer rebases onto the base branch (another change edited
   # the same lines first) is rebuilt on the new base this many times before it waits
-  # for a human as rebase_conflict. 0: never rebuild. OPENSPEC_CONFLICT_REBUILDS
-  conflict_rebuilds: 1
+  # for a human as rebase_conflict. While a rebuild runs, another change may merge into
+  # the same files again. 0: never rebuild. OPENSPEC_CONFLICT_REBUILDS
+  conflict_rebuilds: 3
   # Every this many hours an item waits in the backlog, it is ordered one priority
   # higher (low, normal, high, critical), so low items are not starved by a steady
   # flow of higher ones. Its priority in the backlog does not change. 0: off.

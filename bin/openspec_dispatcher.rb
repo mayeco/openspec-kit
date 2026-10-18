@@ -33,6 +33,13 @@ class OpenSpecDispatcher
   AGING_HOURS = OpenSpecSettings.get(O::ROOT, 'dispatch.aging_hours')
   # When each backlog item was first seen, for aging items that carry no queued_at.
   SEEN_FILE = File.join(O::LOG_DIR, 'backlog_seen.json')
+  # agent_exec.sh exits 75 when every engine of a call failed without changing anything
+  # (out of quota, logged out, offline): the change is deferred, not failed. One deferred
+  # this many dispatches in a row is quarantined as engine_unavailable: the preflight's
+  # ping works by then, so the cause is the change (a prompt the model rejects), not a quota.
+  ENGINES_DOWN = 75
+  DEFERRAL_LIMIT = 3
+  DEFERRALS_FILE = File.join(O::LOG_DIR, 'deferrals.json')
   # The engine of each phase: its role in config/agents.yaml, unless an AGENT_ENGINE* variable overrides it.
   ENGINE_PLAN = OpenSpecAgents.engine(O::ROOT, 'plan')
   ENGINE_BUILD = OpenSpecAgents.engine(O::ROOT, 'build')
@@ -40,6 +47,9 @@ class OpenSpecDispatcher
   # A git credential helper such as osxkeychain is not covered: run workers as a
   # separate OS user, or in a container without one, to keep them from pushing.
   AGENT_ENV = %w[SSH_AUTH_SOCK GH_TOKEN GITHUB_TOKEN GITLAB_TOKEN GIT_ASKPASS].to_h { |k| [k, nil] }.freeze
+
+  # Every engine of an agent call failed without changing anything (agent_exec.sh exit 75).
+  class EnginesDown < StandardError; end
 
   def initialize(max_workers:, repair_attempts:, backlog_file:, wait:, dry_run:, engine_plan: ENGINE_PLAN, engine_build: ENGINE_BUILD)
     @max_workers = max_workers
@@ -55,7 +65,8 @@ class OpenSpecDispatcher
     @leases = {}              # change => Lease
     @building = {}            # change => capabilities held while building
     @held = {}                # change => capabilities that conflicted at claim time
-    @results = {}             # change => :ready | :blocked | :busy
+    @results = {}             # change => :ready | :blocked | :busy | :deferred
+    @engines_down = false     # an agent call found every engine down: start nothing else
     @slots = {}               # change => OPENSPEC_SLOT of its worker (1, 2, ...)
     @items = []               # the last backlog read that parsed
     @backlog_sig = nil        # mtime and size of that read
@@ -89,8 +100,8 @@ class OpenSpecDispatcher
         return
       end
 
-      if O.paused?
-        O.emit('dispatcher.paused') if @threads.empty?
+      if O.paused? || @engines_down
+        O.emit(O.paused? ? 'dispatcher.paused' : 'dispatcher.engines_down') if @threads.empty?
         break if @threads.empty?
       else
         eligible.first([@max_workers - @threads.size, 0].max).each { |item| start(item) }
@@ -302,24 +313,61 @@ class OpenSpecDispatcher
     assessment = assess_risk!(item, wt, change, caps, log)
     enqueue!(change, wt, branch, caps, assessment)
     :ready
-  rescue O::Blocked => e
-    # System/framework errors (unavailable judge or engine, malformed question
-    # files) pause the pipeline after the first failure so the dispatcher does
-    # not quarantine the rest of the backlog one by one.
-    if O::SYSTEM_REASONS.include?(e.reason) && !O.pause!("#{e.reason} (#{change}): #{e.details.lines.first&.strip}")
-      return :paused
-    end
-    O.quarantine!(change, e, 'worktree' => wt, 'branch' => branch, 'log' => log)
-    :blocked
-  rescue StandardError => e
-    err = O::Blocked.new('orchestrator_error', "#{e.class}: #{e.message}")
-    return :paused unless O.pause!("#{err.reason} (#{change}): #{err.details.lines.first&.strip}")
+  rescue EnginesDown => e
+    return :deferred if deferred?(change, e.message)
 
-    O.quarantine!(change, err, 'worktree' => wt, 'branch' => branch, 'log' => log)
-    :blocked
+    stop!(change, O::Blocked.new('engine_unavailable',
+                                 "Every agent of the role failed without changing anything in #{DEFERRAL_LIMIT} dispatches " \
+                                 "in a row, while the preflight's ping works: read their output in #{log} (a prompt the " \
+                                 "model rejects, an expired login). Delete log/blocked/#{change}.json and log/PAUSE to try " \
+                                 "again.\n#{e.message}"), wt, branch, log)
+  rescue O::Blocked => e
+    stop!(change, e, wt, branch, log)
+  rescue StandardError => e
+    stop!(change, O::Blocked.new('orchestrator_error', "#{e.class}: #{e.message}"), wt, branch, log)
   ensure
     @state_mutex.synchronize { @leases.delete(change) }
     lease&.release!
+  end
+
+  # System/framework errors (unavailable judge or engine, malformed question files,
+  # an orchestrator bug) pause the pipeline after the first failure so the dispatcher
+  # does not quarantine the rest of the backlog one by one.
+  def stop!(change, error, wt, branch, log)
+    if O::SYSTEM_REASONS.include?(error.reason) && !O.pause!("#{error.reason} (#{change}): #{error.details.lines.first&.strip}")
+      return :paused
+    end
+
+    O.quarantine!(change, error, 'worktree' => wt, 'branch' => branch, 'log' => log)
+    :blocked
+  end
+
+  # Every engine of an agent call failed without changing anything. The change waits for
+  # the next dispatch with its worktree, without spending a repair round or blaming its
+  # plan, and this dispatch starts nothing else: the next cycle's preflight pings the
+  # agents before dispatching again. False on the DEFERRAL_LIMIT-th deferral in a row.
+  def deferred?(change, output)
+    count = @state_mutex.synchronize do
+      @engines_down = true
+      counts = O.read_json(DEFERRALS_FILE) || {}
+      n = counts[change].to_i + 1
+      n >= DEFERRAL_LIMIT ? counts.delete(change) : counts[change] = n
+      O.write_json_atomic(DEFERRALS_FILE, counts)
+      n
+    end
+    return false if count >= DEFERRAL_LIMIT
+
+    why = output.lines.reject { |l| l.start_with?('agent_exec:') }.last(3).join.strip # the engine's own last words
+    O.emit('change.deferred', change: change, deferrals: count, limit: DEFERRAL_LIMIT, output: why[0, 300])
+    true
+  end
+
+  # An agent call that worked ends the change's run of deferrals.
+  def clear_deferrals(change)
+    @state_mutex.synchronize do
+      counts = O.read_json(DEFERRALS_FILE) || {}
+      O.write_json_atomic(DEFERRALS_FILE, counts) if counts.delete(change)
+    end
   end
 
   def provision_worktree!(wt, change, branch, log)
@@ -460,14 +508,17 @@ class OpenSpecDispatcher
   end
 
   # Child-repo changes since the fork point: files, diffstat and (by policy) the diff.
+  # They run to each child's own HEAD, not to the gitlink the umbrella branch records:
+  # J7 asks right after the gates pass, before BUILD's umbrella commit records the
+  # child commits.
   def child_changes(wt)
     fork = O.git!(['merge-base', 'HEAD', "#{O::REMOTE}/#{O::BASE_BRANCH}"], chdir: wt)
     O.child_paths(wt).each_with_object({}) do |path, acc|
+      child = File.join(wt, path)
       from = O.git(['rev-parse', "#{fork}:#{path}"], chdir: wt).out.strip
-      to = O.git!(['rev-parse', "HEAD:#{path}"], chdir: wt)
+      to = O.git!(%w[rev-parse HEAD], chdir: child)
       next if from == to
 
-      child = File.join(wt, path)
       acc[path] = {
         'files' => O.git(['diff', '--name-only', from, to], chdir: child).out.split("\n"),
         'diffstat' => O.git(['diff', '--stat', from, to], chdir: child).out
@@ -803,6 +854,9 @@ class OpenSpecDispatcher
     O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: used,
                          engines: engine || 'default')
     raise O::Blocked.new('engine_unavailable', res.out) if res.code == 127
+    raise EnginesDown, res.tail(20) if res.code == ENGINES_DOWN
+
+    clear_deferrals(change)
 
     # The agent's only escalation channel: a question a human must answer.
     flag = File.join(wt, 'openspec', 'changes', change, '.needs-human')
