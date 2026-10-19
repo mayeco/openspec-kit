@@ -14,7 +14,11 @@
 #   - whether a dispatch is running, so the agent knows that it picks up what
 #     it queues as soon as a worker is free;
 #   - where findings go, the roadmap and how proposals get approved
-#     (config/cycle.yaml).
+#     (config/cycle.yaml);
+#   - where lessons go, and which memory file is over its cap and must be
+#     trimmed first (bin/lib/memory.rb);
+#   - who approves a prompt proposal, an edit of config/prompts/ that the script
+#     applies (bin/proposals.rb).
 #
 #   ruby bin/cycle_prompt.rb <output-file> [--dispatch-running PID] [--strategy SLUG]
 #
@@ -25,6 +29,7 @@ require 'fileutils'
 require 'json'
 require 'optparse'
 require 'yaml'
+require_relative 'lib/memory'
 require_relative 'lib/prompts'
 
 Encoding.default_external = Encoding::UTF_8
@@ -137,7 +142,19 @@ module CyclePrompt
       - **Roadmap**: #{roadmap_line}
       - **Proposals** (`config/agent_proposals.json`, approval `#{approval}`): #{APPROVAL.fetch(approval, APPROVAL['human'])}. Add proposals with `"status": "proposed"` only; never change the status of an existing one.
       - **Visual QA**: #{visual_line(cycle)}
+      - **Memory**: #{OpenSpecMemory.plan_line(ROOT)}
+      - **Prompts**: #{prompts_line(cycle)}
     MD
+  end
+
+  def prompts_line(cycle)
+    who = if cycle.dig('proposals', 'prompt_approval') == 'auto'
+            'the script applies it after you exit, without review (`proposals.prompt_approval: auto`)'
+          else
+            'a human approves it (`ruby bin/proposals.rb show <change>`, then `approve <change>`), and the next cycle applies it'
+          end
+    'never edit `config/prompts/`; an edit of a prompt that evidence argues for is a prompt proposal ' \
+      "(openspec-kit-cycle, \"Propose prompt edits\"): #{who}. Versions to compare: `ruby bin/prompt_report.rb`."
   end
 
   def visual_line(cycle)

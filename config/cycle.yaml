@@ -5,7 +5,7 @@
 # it; the scripts read it and write the cycle's plan into the judgment agent's
 # prompt, so the scheduled task's prompt never changes. The cycle's state and
 # reports are runtime files under log/cycle/ (git-ignored); durable lessons go to
-# MEMORY.md.
+# MEMORY.md and memory/.
 
 # Minutes the cycle agent may spend verifying delivered work and exploring.
 qa_time_budget_minutes: 45
@@ -32,6 +32,12 @@ proposals:
   #   human  a person: ruby bin/proposals.rb approve <change>
   #   auto   nobody: every proposal is queued
   approval: jev
+  # Who approves a prompt proposal: an edit of config/prompts/plan.md, build.md or
+  # cycle.md that the cycle bases on evidence (repair rounds, bin/prompt_report.rb).
+  # Once approved, bin/proposals.rb applies and checks it, and the cycle records it.
+  #   human  a person: ruby bin/proposals.rb show <change>, then approve <change>
+  #   auto   nobody: it is applied after the judgment that proposed it
+  prompt_approval: human
 
 visual_qa:
   # A browser session in an agent app (Claude, Hermes), scheduled as its own task
@@ -42,6 +48,15 @@ visual_qa:
   enabled: true
   minutes: 40 # time budget of one session
   max_items_per_session: 5 # queued checks one session takes; the rest wait
+
+memory:
+  # MEMORY.md holds what applies to every change, and every agent reads it on every
+  # call. memory/repos/<name>.md and memory/specs/<capability>.md hold what applies
+  # to one child repository or capability; the PLAN and BUILD prompts point to
+  # them, so only the changes that touch that scope read them. Over a cap, the next
+  # cycle and visual session are told to trim that file first.
+  max_chars: 12000 # MEMORY.md
+  scoped_max_chars: 6000 # each file under memory/
 
 qa:
   # Application skills the cycle and the visual session use to verify and explore,

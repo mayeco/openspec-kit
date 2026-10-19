@@ -10,7 +10,7 @@
 #   begin  takes log/visual_qa.lock, synchronises the checkout, claims the queued
 #          checks (bin/visual_qa.rb) and writes the session's plan; prints one line
 #   end    returns unfinished checks to the queue, applies the scope guard,
-#          reviews proposals, records MEMORY.md, the backlog and the proposals,
+#          reviews proposals, records the memory, the backlog and the proposals,
 #          and releases the lock
 # The agent tests between the two, in its own session. While the session holds
 # the lock the headless cycle does not judge, and a session does not begin while

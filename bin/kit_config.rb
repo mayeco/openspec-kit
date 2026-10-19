@@ -39,6 +39,7 @@ require 'json'
 require 'open3'
 require 'yaml'
 require_relative 'lib/agents'
+require_relative 'lib/memory'
 require_relative 'lib/prompts'
 require_relative 'lib/settings'
 require_relative 'cycle_prompt'
@@ -62,7 +63,7 @@ module KitConfig
     'jev' => 'the Jev judgment gates; read on every gate'
   }.freeze
   # What the cycle's judgment and the visual session may write (bin/lib/record.sh).
-  SCOPE = %w[MEMORY.md config/agent_backlog.json config/agent_proposals.json].freeze
+  SCOPE = %w[MEMORY.md memory config/agent_backlog.json config/agent_proposals.json].freeze
   CHANGE_NAME = /\A[a-z0-9][a-z0-9-]{0,62}\z/
   KINDS = %w[defects improvements features].freeze
   MODES = %w[off advisory enforce].freeze
@@ -118,7 +119,7 @@ module KitConfig
             "random: any of them first, then the others in the order listed, spreading the calls over the agents' quotas (AGENT_ORDER overrides it for one run)",
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::ORDERS),
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
-            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo without --auto',
+            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo and omp on their own approval settings, pi without project extensions (hermes, copilot, opencode, cline and crush ignore it)',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::PERMISSIONS),
     *PIPELINE.map { |key, (means, read_by)| setting("pipeline.#{key}", :pipeline, OpenSpecSettings::KEYS.fetch(key)[1], "#{means} (#{OpenSpecSettings::KEYS.fetch(key)[0]} overrides it for one run)", read_by) },
     setting('cycle.qa_time_budget_minutes', :int, 45, 'minutes the judgment may spend verifying and exploring',
@@ -138,6 +139,9 @@ module KitConfig
     setting('cycle.proposals.approval', :enum, 'jev',
             'who approves proposals before they are queued: Jev (gate proposal_review; the rest waits for a human), a human, or nobody',
             'bin/proposals.rb after each judgment and visual session; bin/cycle_prompt.rb', values: %w[jev human auto]),
+    setting('cycle.proposals.prompt_approval', :enum, 'human',
+            "who approves a prompt proposal, an edit of config/prompts/ the cycle bases on evidence: a human (proposals.rb show, then approve), or nobody (the script applies it after the judgment)",
+            'bin/proposals.rb after each judgment and visual session; bin/cycle_prompt.rb', values: %w[human auto]),
     setting('cycle.visual_qa.enabled', :bool, false,
             'a browser session in an agent app checks integrated changes and runs the strategies that need a browser',
             'bin/run_cycle.sh, bin/cycle_prompt.rb, bin/visual_qa.sh, bin/visual_qa.rb'),
@@ -147,6 +151,12 @@ module KitConfig
             'bin/visual_qa.rb'),
     setting('cycle.qa.skills', :list, [], "the application's own QA skills the cycle and the visual session use",
             "bin/visual_qa.rb, the cycle's judgment", change: 'edit config/cycle.yaml, for example skills: [browser-qa]'),
+    setting('cycle.memory.max_chars', :int, OpenSpecMemory::DEFAULTS['max_chars'],
+            'characters MEMORY.md may hold: every agent reads it on every call. Over it, the next cycle and visual session are told to trim it first; 0: the default',
+            'bin/cycle_prompt.rb, bin/visual_qa.rb, check (bin/lib/memory.rb)'),
+    setting('cycle.memory.scoped_max_chars', :int, OpenSpecMemory::DEFAULTS['scoped_max_chars'],
+            'characters each lesson file of memory/ may hold (one repository or capability, read only by the changes that touch it); 0: the default',
+            'bin/cycle_prompt.rb, bin/visual_qa.rb, check (bin/lib/memory.rb)'),
     setting('exploration.order', :enum, 'rotation', 'rotation: in file order; random: never one of the most recent half again',
             'bin/cycle_prompt.rb, bin/visual_qa.rb', values: %w[rotation random]),
     setting('exploration.strategies', :list, nil, 'slug, name, kind, directive, needs, enabled of each strategy',
@@ -463,6 +473,9 @@ module KitConfig
   end
 
   def check_cycle(data, report, jev)
+    OpenSpecMemory.over_cap(ROOT).each do |name, chars, cap|
+      report[:warnings] << "memory: #{name} holds #{chars} characters, over its cap of #{cap}; the next cycle is told to trim it first"
+    end
     file = data.dig('roadmap', 'file').to_s
     full = File.join(ROOT, file)
     if !file.empty? && !File.file?(full)
@@ -575,6 +588,16 @@ module KitConfig
       at = item['change_name'] || "item #{i}"
       report[:errors] << "#{at}: change_name must be kebab-case" unless item['change_name'].to_s.match?(CHANGE_NAME)
       report[:errors] << "#{at}: status must be one of #{STATUSES.join(', ')}" unless STATUSES.include?(item['status'])
+      next unless item['kind'] == 'prompt'
+
+      unless OpenSpecPrompts::PLACEHOLDERS.key?(item['prompt'].to_s)
+        report[:errors] << "#{at}: prompt must be one of #{OpenSpecPrompts::PLACEHOLDERS.keys.join(', ')}"
+      end
+      edits = item['edits']
+      unless edits.is_a?(Array) && edits.any? && edits.all? { |e| e.is_a?(Hash) && e['old'].is_a?(String) && !e['old'].empty? && e['new'].is_a?(String) }
+        report[:errors] << "#{at}: edits must be a list of {old, new} texts"
+      end
+      report[:warnings] << "#{at}: a prompt edit waits for a human: ruby bin/proposals.rb show #{at}" if item['status'] == 'proposed'
     end
   end
 

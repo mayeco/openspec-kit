@@ -36,7 +36,11 @@
 
 ## Memory
 
-<lessons folded into MEMORY.md, entries merged or removed; "none">
+<lessons folded into MEMORY.md or memory/ (file, lesson, the evidence read); lessons left out and why; entries merged, moved or removed; "none">
+
+## Prompt versions
+
+<what `ruby bin/prompt_report.rb` shows for the versions of the prompts in use; prompt edits proposed (with their evidence), applied or rejected; "none">
 
 ## Needs a human
 

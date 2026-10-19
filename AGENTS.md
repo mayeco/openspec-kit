@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, Google Antigravity, Kilo Code, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here. `README.md` describes the product and `ROADMAP.md` what comes next.
+Guide for any AI agent working in this repository: Claude Code, Codex, GitHub Copilot, Hermes, OpenCode, Google Antigravity, Kilo Code, Cline, pi, oh-my-pi, Crush, whether a person drives it or the pipeline runs it. Read `MEMORY.md` next: it holds the conventions and lessons learned here; `memory/` holds those of one repository or capability. `README.md` describes the product and `ROADMAP.md` what comes next.
 
 ## 1. What this repository is
 
@@ -17,7 +17,8 @@ The umbrella of the application, built specification first with [OpenSpec](https
 │                            prompts/: the agents' prompts (plan.md, build.md, cycle.md)
 ├── bin/  config/templates/  the kit: scripts and templates (replaced on upgrade)
 ├── .agents/skills/          the kit's skills (openspec-kit-*) and OpenSpec's
-├── MEMORY.md                long-term memory
+├── MEMORY.md                long-term memory: what holds for every change
+├── memory/                  what holds for one repository (repos/<name>.md) or capability (specs/<capability>.md)
 ├── log/  .worktrees/        runtime state (git-ignored)
 └── INSTALL.md  SCHEDULING.md  how the kit is installed and scheduled
 ```
@@ -27,7 +28,7 @@ The umbrella of the application, built specification first with [OpenSpec](https
 1. Work is queued in `config/agent_backlog.json` (`change_name`, `priority`, `description`): by a person, by the scheduled cycle when it finds a defect, or from an approved proposal (`config/agent_proposals.json`).
 2. `bin/openspec_dispatcher.rb` takes each item into its own worktree (`.worktrees/worker-<change>`, branch `feat/spec-<change>`). A **plan** agent writes the OpenSpec change (`proposal.md`, `specs/`, `design.md`, `tasks.md`) until `openspec validate --strict` passes. A **build** agent then implements the tasks in `repos/`, with tests, until every task is checked and the gates pass. Several changes build at once.
 3. `bin/openspec_merger.rb` integrates each finished change: it rebases it, runs the gates again, archives it with `openspec archive` (the only way `openspec/specs/` changes) and pushes.
-4. Every hour the cycle (`bin/run_cycle.sh`) verifies what was integrated, explores the application, queues defects, proposes improvements and roadmap features, and curates `MEMORY.md`. A visual QA session in an agent app tests the application in a browser.
+4. Every hour the cycle (`bin/run_cycle.sh`) verifies what was integrated, explores the application, queues defects, proposes improvements and roadmap features, and curates `MEMORY.md` and `memory/`. A visual QA session in an agent app tests the application in a browser.
 
 Anything that fails is quarantined in `log/blocked/<change>.json` with a reason, and waits for a person; the rest keeps going.
 
@@ -45,8 +46,8 @@ Anything that fails is quarantined in `log/blocked/<change>.json` with a reason,
 Your prompt says which role you have and what you may write. In short:
 - Never commit, push, pull, rebase, reset or switch branches: the scripts do.
 - Never edit `repos/*/repo.config.yaml`, a repository's `env_script` or CI configuration: the merger blocks it.
-- A plan or build agent writes only in `openspec/changes/<its change>/` and `repos/`; it leaves lessons in that change's `handoff.md`, not in `MEMORY.md`.
-- The cycle and the visual QA session write only `MEMORY.md`, the backlog and the proposals. Anything else uncommitted pauses the system.
+- A plan or build agent writes only in `openspec/changes/<its change>/` and `repos/`; it leaves lessons, each with its evidence, in that change's `handoff.md`, not in `MEMORY.md` or `memory/`. The dispatcher records each repair round beside it in `repairs.md`.
+- The cycle and the visual QA session write only `MEMORY.md`, `memory/`, the backlog and the proposals. Anything else uncommitted pauses the system.
 - When a decision needs a person, write the question to `openspec/changes/<change>/.needs-human` and stop.
 
 ### When a person drives you

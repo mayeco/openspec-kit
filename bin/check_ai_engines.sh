@@ -17,7 +17,7 @@ export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.loc
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes.
 bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 180 "$@"; else "$@"; fi; }
-AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized|No authentication information found"
+AUTH_ERRORS="Not logged in|authentication_error|Invalid API key|Please run /login|401 Unauthorized|No authentication information found|No models available|No API key for"
 
 echo "== Toolchain ($(date -u +%Y-%m-%dT%H:%M:%SZ), $(uname -sm))"
 MISSING=0
@@ -72,6 +72,10 @@ probe hermes   hermes -z "Reply with the single word: pong"
 probe opencode opencode run "Reply with the single word: pong"
 probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s
 probe kilo     kilo run --agent code "Reply with the single word: pong"
+probe cline    cline --yolo "Reply with the single word: pong"
+probe pi       pi -p --no-session -- "Reply with the single word: pong"
+probe omp      omp -p --no-session "Reply with the single word: pong"
+probe crush    crush run --quiet "Reply with the single word: pong"
 
 # Every role must have a working engine among its list (stub: the kit's own tests).
 # agent_exec.sh falls back along the list, so a dead fallback is only a warning.

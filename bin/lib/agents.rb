@@ -28,15 +28,19 @@
 require 'yaml'
 
 module OpenSpecAgents
-  # name (the CLI's command) => the `openspec init --tools` id and the directory its skills live in.
+  # name (the CLI's command) => what it is, the `openspec init --tools` id and the directory its skills live in.
   SUPPORTED = {
-    'claude' => { 'tool' => 'claude', 'skills' => '.claude/skills' },
-    'codex' => { 'tool' => 'codex', 'skills' => '.agents/skills' },
-    'copilot' => { 'tool' => 'github-copilot', 'skills' => '.github/skills' },
-    'hermes' => { 'tool' => 'hermes', 'skills' => '.hermes/skills' },
-    'opencode' => { 'tool' => 'opencode', 'skills' => '.opencode/skills' },
-    'agy' => { 'tool' => 'antigravity', 'skills' => '.agents/skills' }, # Google Antigravity's CLI
-    'kilo' => { 'tool' => 'kilocode', 'skills' => '.kilocode/skills' }  # Kilo Code's CLI
+    'claude' => { 'label' => 'Claude Code', 'tool' => 'claude', 'skills' => '.claude/skills' },
+    'codex' => { 'label' => 'OpenAI Codex', 'tool' => 'codex', 'skills' => '.agents/skills' },
+    'copilot' => { 'label' => 'GitHub Copilot', 'tool' => 'github-copilot', 'skills' => '.github/skills' },
+    'hermes' => { 'label' => 'Hermes', 'tool' => 'hermes', 'skills' => '.hermes/skills' },
+    'opencode' => { 'label' => 'OpenCode', 'tool' => 'opencode', 'skills' => '.opencode/skills' },
+    'agy' => { 'label' => 'Google Antigravity', 'tool' => 'antigravity', 'skills' => '.agents/skills' },
+    'kilo' => { 'label' => 'Kilo Code', 'tool' => 'kilocode', 'skills' => '.kilocode/skills' },
+    'cline' => { 'label' => 'Cline', 'tool' => 'cline', 'skills' => '.cline/skills' },
+    'pi' => { 'label' => 'pi', 'tool' => 'pi', 'skills' => '.pi/skills' },
+    'omp' => { 'label' => 'oh-my-pi, a fork of pi', 'tool' => 'oh-my-pi', 'skills' => '.omp/skills' },
+    'crush' => { 'label' => "Charm's Crush", 'tool' => 'crush', 'skills' => '.crush/skills' }
   }.freeze
   ROLES = {
     'plan' => 'writes the OpenSpec artifacts of each backlog item',
@@ -140,6 +144,8 @@ module OpenSpecAgents
              '# Each one gets the skills in its own directory. The scripts read the roles from here,',
              '# so the scheduled task always runs the same command. Change the agents with',
              '# `<release>/bin/install.sh upgrade <app> --agents ...`; a role, the order and the permissions may be edited by hand.',
+             '# The agents the kit supports (an agent not listed in agents gets no skills here):',
+             *SUPPORTED.map { |name, a| "#   #{name.ljust(SUPPORTED.keys.map(&:size).max)}  #{a['label'].ljust(SUPPORTED.values.map { |v| v['label'].size }.max)}  skills in #{a['skills']}/" },
              "agents: [#{agents.join(', ')}]",
              '# Each role lists its agents in order of preference. One that fails (out of quota, not',
              '# logged in, timed out) is tried again limits.agent_retries times (config/pipeline.yaml),',
@@ -156,7 +162,7 @@ module OpenSpecAgents
                '# all: agents may run any command (servers, curl, browsers, test tools), except the git',
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
                '# restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates',
-               '# and ask Jev; Codex and Antigravity (agy) keep their sandbox; Kilo loses --auto. Hermes, Copilot and OpenCode ignore it.',
+               '# and ask Jev; Codex and Antigravity (agy) keep their sandbox; Kilo and omp follow their own approval settings; pi loads no project extensions. Hermes, Copilot, OpenCode, Cline and Crush ignore it.',
                "permissions: #{permissions}")
     path = File.join(root, CONFIG)
     File.write(path, "#{lines.join("\n")}\n")

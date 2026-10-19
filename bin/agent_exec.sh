@@ -4,7 +4,8 @@
 # ==============================================================================
 # Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine[,engine...]]
 #
-# Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), kilo, and stub for the kit's tests.
+# Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), kilo, cline, pi, omp (oh-my-pi),
+# crush, and stub for the kit's tests.
 # Callers pass the engines of their role from config/agents.yaml (bin/lib/agents.rb),
 # in order; without them it is $AGENT_ENGINE, then the first engine found on PATH.
 # Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
@@ -37,7 +38,7 @@ ORDER="$(ruby "$(dirname "$0")/lib/agents.rb" order)"   # fallback | random
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
-  for candidate in claude codex copilot hermes opencode agy kilo; do
+  for candidate in claude codex copilot hermes opencode agy kilo cline pi omp crush; do
     if command -v "$candidate" >/dev/null 2>&1; then ENGINES="$candidate"; break; fi
   done
 fi
@@ -171,6 +172,41 @@ run_engine() { # <engine>
       else
         bounded kilo run --agent code --auto "$PROMPT"
       fi
+      ;;
+    cline)
+      # Cline's CLI. A prompt runs one headless turn in act mode and exits; --yolo approves
+      # every tool, ends the run when the turn finishes and leaves out the spawn and team
+      # tools. Cline has no sandbox and no allowlist, so restricted changes nothing for it.
+      bounded cline --yolo --cwd "$PWD" "$PROMPT"
+      ;;
+    pi)
+      # pi, the coding agent. -p runs headless and exits nonzero when the turn ends in an error;
+      # pi never asks before a tool. --no-session keeps no session file. A headless run cannot
+      # be asked to trust the project, so all trusts it (--approve), loading the skills of
+      # .pi/skills and .agents/skills; restricted loads none of the project's extensions,
+      # settings or skills (--no-approve). Its tools keep the process's permissions either way.
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded pi -p --no-session --no-approve -- "$PROMPT"
+      else
+        bounded pi -p --no-session --approve -- "$PROMPT"
+      fi
+      ;;
+    omp)
+      # oh-my-pi, a fork of pi. -p runs headless; a tool that needs an approval nobody can give
+      # fails. all approves every tool (--approval-mode=yolo); restricted leaves omp's own
+      # tools.approvalMode and per-tool policies in charge (omp config).
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded omp -p --no-session "$PROMPT"
+      else
+        bounded omp -p --no-session --approval-mode=yolo "$PROMPT"
+      fi
+      ;;
+    crush)
+      # Charm's Crush. run is headless and approves every permission request of its own
+      # session, so restricted changes nothing for it (disabled_tools and hooks in its
+      # crush.json are the way to restrict it). It reads piped stdin into the prompt: give
+      # it none, so it never waits on an open pipe.
+      bounded crush run --quiet "$PROMPT" </dev/null
       ;;
     copilot)
       DENY=()

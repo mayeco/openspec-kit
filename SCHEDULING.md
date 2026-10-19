@@ -135,6 +135,18 @@ Antigravity's CLI has no scheduler of its own. Use crontab (section 1). If `role
 
 Kilo's CLI has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `kilo`, the script calls `kilo run --agent code` for the judgment by itself.
 
+### Cline (`cline`)
+
+Use crontab (section 1): the cycle's task only runs a script, which needs no agent turn. If `roles.cycle` names `cline`, the script calls `cline --yolo` for the judgment by itself. Authenticate the provider first (`cline auth`): a run without saved credentials fails at once instead of opening a browser.
+
+### pi (`pi`) and oh-my-pi (`omp`)
+
+Neither has a scheduler. Use crontab (section 1). If `roles.cycle` names `pi` or `omp`, the script calls `pi -p` or `omp -p` for the judgment by itself. Sign in once in a terminal (`/login` in pi, `omp login`) or export the provider's API key where the scheduler runs.
+
+### Crush (`crush`)
+
+Crush has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `crush`, the script calls `crush run` for the judgment by itself. Configure a provider once in an interactive `crush` session (or export its API key where the scheduler runs).
+
 ## 3. The visual QA session
 
 The agent app must be open, logged in and able to drive a browser, on a computer that is awake. Checks wait in the queue (`log/cycle/visual_queue.json`) while it is not.
@@ -186,6 +198,6 @@ OpenCode has no scheduler and no browser of its own. It can run the session from
 | `preflight: FAIL (...)` | An agent CLI is not logged in, a kit file was edited (`bash bin/install.sh verify`), or a tool is missing |
 | `visual-qa: a cycle is judging` | The visual session starts at its next run. Normal |
 | `visual-qa: disabled` | `visual_qa.enabled` is not `true` in `config/cycle.yaml` |
-| `scope violation` in `log/PAUSE` | A file besides `MEMORY.md`, the backlog and the proposals was uncommitted while a cycle or visual session ran (often a setting edited by hand): commit it, then `rm log/PAUSE` |
+| `scope violation` in `log/PAUSE` | A file besides `MEMORY.md`, `memory/`, the backlog and the proposals was uncommitted while a cycle or visual session ran (often a setting edited by hand): commit it, then `rm log/PAUSE` |
 | `couldn't find remote ref master` in a cycle's log | `base_branch` in `config/pipeline.yaml` is not the application's branch: `ruby bin/kit_config.rb set pipeline.base_branch <branch>`, commit, push |
 | Nothing in `log/cycle/cron.log` | cron does not fire: check `crontab -l`, Full Disk Access on macOS, and the path in the line |

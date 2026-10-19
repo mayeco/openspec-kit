@@ -1,6 +1,6 @@
 # Memory
 
-Curated long-term memory for this workspace. The scheduled cycle is its only writer (`bin/run_cycle.sh`); workers record lessons in `openspec/changes/<change>/handoff.md` instead. Keep only durable, non-obvious facts: conventions, required flags, environment quirks and decisions with their reason. In-flight state, partial diffs and debug output do not belong here.
+Curated long-term memory for this workspace. Every agent reads it on every call, so it holds what applies to every change, within `memory.max_chars` of `config/cycle.yaml`. A lesson that holds for one child repository or one capability goes to `memory/repos/<name>.md` or `memory/specs/<capability>.md` instead: the PLAN and BUILD prompts point to those files, so only the changes that touch that scope read them. The scheduled cycle and the visual QA session are the only writers; workers record lessons, each with its evidence, in `openspec/changes/<change>/handoff.md`, and the dispatcher records every repair round beside it in `repairs.md`. Keep only durable, non-obvious facts: conventions, required flags, environment quirks and decisions with their reason. In-flight state, partial diffs and debug output do not belong here.
 
 ---
 
@@ -15,7 +15,7 @@ Curated long-term memory for this workspace. The scheduled cycle is its only wri
 
 ## 2. Lessons and Environment Quirks
 
-<!-- The scheduled cycle folds the handoff.md lessons of integrated changes here. -->
+<!-- The scheduled cycle folds the handoff.md lessons of integrated changes here, or in memory/ when one holds for a single repository or capability: the situation it applies to, what to do, and the change whose evidence showed it. -->
 
 ---
 

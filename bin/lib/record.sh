@@ -6,9 +6,15 @@
 # visual QA session in an agent app). The caller sets ROOT, LOG_DIR and BASE and
 # runs from ROOT.
 
-# The versioned paths an agent session may write. log/cycle/ and log/PAUSE are
-# git-ignored; everything else belongs to the merger or to humans.
-SCOPE=(MEMORY.md config/agent_backlog.json config/agent_proposals.json)
+# The versioned paths an agent session may write: the memory (MEMORY.md, and
+# memory/ for lessons of one repository or capability), the backlog and the
+# proposals. log/cycle/ and log/PAUSE are git-ignored; everything else belongs to
+# the merger or to humans.
+SCOPE=(MEMORY.md memory config/agent_backlog.json config/agent_proposals.json)
+# What the record step commits: that scope, and the agents' prompts, which
+# bin/proposals.rb edits after the scope guard when a prompt proposal is approved.
+# The scope guard runs first, so an agent's own edit of a prompt is never recorded.
+RECORDED=("${SCOPE[@]}" config/prompts)
 
 # Fails, and pauses the system for a human, when the session wrote anything else.
 scope_guard() { # <who>
@@ -21,12 +27,12 @@ scope_guard() { # <who>
   return 1
 }
 
-# Commits the scope paths that changed and publishes them on the base branch.
+# Commits the recorded paths that changed and publishes them on the base branch.
 record() { # <commit message>
-  [ -n "$(git status --porcelain -- "${SCOPE[@]}")" ] || { echo "record: nothing to record"; return 0; }
+  [ -n "$(git status --porcelain -- "${RECORDED[@]}")" ] || { echo "record: nothing to record"; return 0; }
   # git add aborts on a pathspec that matches nothing: stage existing or tracked paths only.
   local stage=() p attempt
-  for p in "${SCOPE[@]}"; do
+  for p in "${RECORDED[@]}"; do
     if [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then stage+=("$p"); fi
   done
   git add -A -- "${stage[@]}" && git commit --quiet -m "$1"

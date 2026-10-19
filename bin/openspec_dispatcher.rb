@@ -11,11 +11,16 @@
 # to the merger through an atomic manifest in log/ready_to_merge/.
 #
 # The agent is never trusted: every phase ends with deterministic post-checks.
+# Each repair round is recorded in the change's repairs.md (what verification
+# asked to fix, what the round changed, whether it then passed), the evidence
+# behind the lessons agents leave in handoff.md. Each agent call records the
+# version of its prompt and of the memory it read (bin/prompt_report.rb).
 # ==============================================================================
 
 require 'optparse'
 require_relative 'lib/openspec_orchestrator'
 require_relative 'lib/agents'
+require_relative 'lib/memory'
 require_relative 'lib/prompts'
 
 class OpenSpecDispatcher
@@ -48,6 +53,17 @@ class OpenSpecDispatcher
   # A git credential helper such as osxkeychain is not covered: run workers as a
   # separate OS user, or in a container without one, to keep them from pushing.
   AGENT_ENV = %w[SSH_AUTH_SOCK GH_TOKEN GITHUB_TOKEN GITLAB_TOKEN GIT_ASKPASS].to_h { |k| [k, nil] }.freeze
+  # The record of a change's repair rounds, openspec/changes/<change>/repairs.md.
+  REPAIRS_HEADER = <<~MD
+    # Repair rounds of %<change>s
+
+    Written by the dispatcher, never by an agent: each round that deterministic verification sent
+    back, what it was asked to fix, what the round changed and whether verification then passed.
+    It is the evidence behind the lessons in handoff.md, and the merger archives it with the change.
+  MD
+  # What looks like a secret in a verification output: the record is committed and pushed.
+  SECRET = /((?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\w*["']?\s*[:=]\s*["']?)[^\s"',]+/i
+  URL_CREDENTIALS = %r{(://[^/\s:@]+:)[^@\s/]+@}
 
   # Every engine of an agent call failed without changing anything (agent_exec.sh exit 75).
   class EnginesDown < StandardError; end
@@ -417,8 +433,10 @@ class OpenSpecDispatcher
     end
 
     attempts = 0
+    round = nil # the repair round just run: its phase, engine and what it was asked to fix
     loop do
       failure = plan_failure(wt, change, log)
+      record_repair!(wt, change, round, failure) if round
       if failure.nil?
         commit_umbrella!(wt, "docs(openspec): plan #{change}", ["openspec/changes/#{change}"], log)
         return
@@ -428,7 +446,9 @@ class OpenSpecDispatcher
       # A fresh plan gets no feedback; anything else (repairs, deltas made stale
       # by a rebase, a Jev rejection) gets the exact verification failure.
       fresh = !File.exist?(File.join(wt, 'openspec', 'changes', change, 'proposal.md'))
-      agent!(change, fresh ? 'plan' : "plan-repair-#{attempts}", plan_prompt(item, fresh ? nil : failure[:details]), wt, log, engine: @engine_plan)
+      phase = fresh ? 'plan' : "plan-repair-#{attempts}"
+      engine = agent!(change, phase, plan_prompt(item, wt, fresh ? nil : failure[:details]), wt, log, role: 'plan', engine: @engine_plan)
+      round = fresh ? nil : { phase: phase, engine: engine, asked: failure }
       attempts += 1
     end
   end
@@ -674,11 +694,15 @@ class OpenSpecDispatcher
       # Any new agent edit invalidates a prior human risk_review approval.
       FileUtils.rm_f(File.join(O::APPROVED_DIR, change))
       asked = failure
-      agent!(change, phase, apply_prompt(item, branch, failure && failure[:details], rebuild: attempts.zero? ? rebuild : nil), wt, log,
-             engine: @engine_build)
+      heads = child_heads(wt)
+      engine = agent!(change, phase, apply_prompt(item, wt, branch, failure && failure[:details], rebuild: attempts.zero? ? rebuild : nil),
+                      wt, log, role: 'build', engine: @engine_build)
       commit_children!(wt, change, log)
       failure = verify_build(wt, change, branch, log)
       failure, reran = triage_failure(change, wt, branch, failure, reran, log) if failure && failure[:reason] == 'gate_failure'
+      if asked
+        record_repair!(wt, change, { phase: phase, engine: engine, asked: asked, changed: child_diffstat(wt, heads) }, failure)
+      end
       break if failure.nil?
 
       attempts += 1
@@ -832,6 +856,57 @@ class OpenSpecDispatcher
     O.emit('change.ready', change: change, capabilities: caps.join(','))
   end
 
+  # ------------------------------------------------------------- repair record
+
+  # Appends one repair round to openspec/changes/<change>/repairs.md: the failure it
+  # was asked to fix, what it changed in the child repositories (BUILD only) and the
+  # verification that followed. A fix's before and after is what a lesson needs as
+  # evidence; the change's next commit records it.
+  def record_repair!(wt, change, round, result)
+    file = File.join(wt, 'openspec', 'changes', change, 'repairs.md')
+    asked = round[:asked]
+    entry = +"\n## #{round[:phase]}, #{Time.now.utc.iso8601}, #{round[:engine]}\n\n"
+    entry << "Asked to fix (#{asked[:reason]}):\n\n#{fenced(excerpt(asked[:details]))}\n"
+    if round.key?(:changed)
+      changed = round[:changed]
+      entry << (changed.empty? ? "Changed: nothing in the child repositories.\n\n" : "Changed:\n\n#{fenced(changed)}\n")
+    end
+    entry << (result ? "Result: failed again (#{result[:reason]}).\n" : "Result: passed.\n")
+    File.write(file, format(REPAIRS_HEADER, change: change)) unless File.exist?(file)
+    File.write(file, entry, mode: 'a')
+  rescue SystemCallError => e
+    O.emit('change.repair_unrecorded', change: change, error: e.message) # a lost record never blocks a change
+  end
+
+  # The end of a verification output, without what looks like a secret.
+  def excerpt(text, lines = 40, chars = 4000)
+    tail = text.to_s.lines.last(lines).join.strip
+    tail = "...#{tail[-chars..]}" if tail.length > chars
+    tail.gsub(SECRET, '\1[redacted]').gsub(URL_CREDENTIALS, '\1[redacted]@')
+  end
+
+  # A Markdown code block whose fence no run of backticks inside it can close.
+  def fenced(text)
+    fence = '`' * [3, (text.scan(/`+/).map(&:size).max || 0) + 1].max
+    "#{fence}text\n#{text}\n#{fence}\n"
+  end
+
+  # Each child repository's HEAD, to tell afterwards what one agent call changed.
+  def child_heads(wt) = O.child_paths(wt).to_h { |path| [path, O.git(%w[rev-parse HEAD], chdir: File.join(wt, path)).out.strip] }
+
+  # What the child repositories gained since `heads`: a short diffstat of each one that moved.
+  def child_diffstat(wt, heads)
+    heads.filter_map do |path, from|
+      next if from.empty?
+
+      stat = O.git(['diff', '--stat=100', from, 'HEAD'], chdir: File.join(wt, path)).out.lines
+      next if stat.empty?
+
+      stat = stat.first(10) + [" ...\n", stat.last] if stat.size > 11
+      "#{path}:\n#{stat.join.rstrip}"
+    end.join("\n")
+  end
+
   # --------------------------------------------------------------------- agent
 
   # One call may try every engine of its role, each 1 + limits.agent_retries times,
@@ -841,11 +916,15 @@ class OpenSpecDispatcher
     (attempts * (AGENT_TIMEOUT + 60)) + ((attempts - 1) * RETRY_DELAY) + 120
   end
 
-  def agent!(change, phase, prompt, wt, log, engine: nil)
+  # Runs one agent call and returns the engine that ran it. Its agent.exit event
+  # records the version of the role's prompt and of the memory in the worktree, so
+  # bin/prompt_report.rb can set each version beside how its changes went.
+  def agent!(change, phase, prompt, wt, log, role:, engine: nil)
     dir = File.join(O::WORKER_LOG_DIR, change)
     FileUtils.mkdir_p(dir)
     prompt_file = File.join(dir, "#{Time.now.utc.strftime('%Y%m%dT%H%M%S')}-#{phase}.prompt.md")
     File.write(prompt_file, prompt)
+    versions = { prompt_version: OpenSpecPrompts.version(O::ROOT, role), memory_version: OpenSpecMemory.fingerprint(wt) }
     started = Time.now
     cmd = ['bash', O::AGENT_EXEC, wt, prompt_file]
     cmd << engine if engine
@@ -853,7 +932,7 @@ class OpenSpecDispatcher
     # agent_exec.sh names each engine it tried; the last one is the one that ran (role fallbacks).
     used = res.out.scan(/agent_exec: engine (\S+) exited \d+/).flatten.last || engine || 'default'
     O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: used,
-                         engines: engine || 'default')
+                         engines: engine || 'default', **versions)
     raise O::Blocked.new('engine_unavailable', res.out) if res.code == 127
     raise EnginesDown, res.tail(20) if res.code == ENGINES_DOWN
 
@@ -862,12 +941,14 @@ class OpenSpecDispatcher
     # The agent's only escalation channel: a question a human must answer.
     flag = File.join(wt, 'openspec', 'changes', change, '.needs-human')
     raise O::Blocked.new('spec_ambiguity', File.read(flag)) if File.exist?(flag)
+
+    used
   end
 
   # The framework's authoring rules travel with the kit (config/templates/authoring_rules.md),
   # so openspec/config.yaml stays the project's own, as `openspec init` created it.
   def authoring_rules
-    @authoring_rules ||= read_or_empty(File.join(O::ROOT, 'config', 'templates', 'authoring_rules.md'))
+    @authoring_rules ||= read_or_empty(File.join(O::ROOT, OpenSpecPrompts::RULES))
   end
 
   # J4: agents may ask Jev their own yes/no questions while they work.
@@ -886,18 +967,22 @@ class OpenSpecDispatcher
   end
 
   # The prompts are the application's own (config/prompts/plan.md and build.md, seeds
-  # the kit creates once); bin/lib/prompts.rb fills their placeholders.
-  def plan_prompt(item, feedback)
+  # the kit creates once); bin/lib/prompts.rb fills their placeholders. {{memory}}
+  # names the lesson files of the worktree's memory/, where the agent reads them.
+  def plan_prompt(item, wt, feedback)
     change = item['change_name']
     OpenSpecPrompts.render(O::ROOT, 'plan',
                            'change' => change, 'goal' => item['description'] || item['why'] || change,
+                           'memory' => OpenSpecMemory.prompt_block(wt, capabilities: capabilities(wt, change)),
                            'jev_hint' => jev_hint, 'authoring_rules' => authoring_rules, 'feedback' => feedback_block(feedback))
   end
 
-  def apply_prompt(item, branch, feedback, rebuild: nil)
+  def apply_prompt(item, wt, branch, feedback, rebuild: nil)
+    change = item['change_name']
     OpenSpecPrompts.render(O::ROOT, 'build',
-                           'change' => item['change_name'], 'branch' => branch, 'jev_hint' => jev_hint,
-                           'authoring_rules' => authoring_rules, 'feedback' => feedback_block(feedback),
+                           'change' => change, 'branch' => branch,
+                           'memory' => OpenSpecMemory.prompt_block(wt, capabilities: capabilities(wt, change)),
+                           'jev_hint' => jev_hint, 'authoring_rules' => authoring_rules, 'feedback' => feedback_block(feedback),
                            'rebuild' => rebuild ? "\nThis change is being built again on the current base branch:\n#{rebuild}" : '')
   end
 

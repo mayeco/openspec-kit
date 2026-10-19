@@ -25,6 +25,7 @@ require 'optparse'
 require 'time'
 require 'yaml'
 require_relative 'cycle_prompt'
+require_relative 'lib/memory'
 
 Encoding.default_external = Encoding::UTF_8
 
@@ -183,6 +184,7 @@ module VisualQA
       - Defects and regressions: backlog items (`openspec-kit-qa`, "Record a finding"); improvements and missing capabilities: proposals in `config/agent_proposals.json` (approval `#{approval}`). At most #{max} this session.
       - Evidence (screenshots, console and network logs): `log/cycle/evidence/visual-#{stamp}/`. Report: `log/cycle/reports/visual-#{stamp}.md`.
       - The application's QA skills: #{skills.empty? ? 'none configured (`qa.skills` in `config/cycle.yaml`)' : skills.map { |k| "`#{k}`" }.join(', ')}.
+      - Lessons: #{OpenSpecMemory.plan_line(ROOT)}
     MD
   end
 

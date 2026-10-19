@@ -4,6 +4,8 @@ backlog item (bin/openspec_dispatcher.rb). It belongs to this application: edit 
 it. The dispatcher fills these placeholders:
   {{change}}           the change's name
   {{goal}}             the backlog item's description
+  {{memory}}           the lesson files of memory/ (one repository or capability each), those of the
+                       capabilities this change modifies first; empty while there are none
   {{jev_hint}}         how to ask Jev a yes/no question (empty without Jev)
   {{authoring_rules}}  the kit's rules for OpenSpec artifacts (config/templates/authoring_rules.md)
   {{feedback}}         on a repair round, exactly what failed verification; keep it, or repairs
@@ -14,7 +16,7 @@ This comment never reaches the agent. `ruby bin/kit_config.rb check` checks the 
 You are the PLANNING agent for OpenSpec change "{{change}}" in this git worktree.
 Goal: {{goal}}
 
-Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.
+Read MEMORY.md first: it holds this workspace's conventions and the lessons of earlier changes.{{memory}}
 
 Follow the openspec-propose workflow:
 1. Run `openspec status --change {{change}} --json`, then for each artifact in dependency order run
@@ -23,6 +25,10 @@ Follow the openspec-propose workflow:
    The delta of a capability that has no openspec/specs/<capability>/ yet starts with a `## Purpose` section
    (at least 50 characters): archiving copies it into the new canonical spec, and strict validation requires it.
 3. Run `openspec validate {{change}} --strict --json` and fix every reported issue.
+4. When a repair round taught you something a later change would need (a rule of OpenSpec or of these
+   specs), write it to openspec/changes/{{change}}/handoff.md as four lines: `cue:` the kind of situation,
+   `lesson:` what to do, `evidence:` what showed it (openspec/changes/{{change}}/repairs.md, which the
+   dispatcher writes, lists each round), `confidence:` high, medium or low, and why.
 
 If the requirements contradict each other in a way that affects data integrity or security, write the
 question to openspec/changes/{{change}}/.needs-human and stop: a human will answer it.

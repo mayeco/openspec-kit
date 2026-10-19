@@ -53,7 +53,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
    - **Strategy**: `slug` (kebab-case, unique), `name`, `kind` (`defects` go to the backlog; `improvements` and `features` become proposals), `directive` (name the application's own modules, screens, flows and paths, as concretely as you would brief a person), optional `needs: browser` (only the visual session runs it) and `enabled: false`.
    - **Jev threshold or question**: decide it from `ruby bin/jev_report.rb --gate <gate>` (each question's scores against its threshold, and what enforce would have stopped beside what happened). Then run `bash bin/jev_contract.sh` (needs the `jev` CLI). Then run `bash bin/jev_contract.sh --live` to recalibrate against the real model; it costs about 11 calls.
 4. **Commit and push it, with the person's OK**: `git add <file> && git commit -m "chore(config): <what>" && git push origin <base-branch>`.
-   - The cycle's judgment and the visual session may only leave `MEMORY.md`, the backlog and the proposals uncommitted. When either one finds anything else uncommitted, its scope guard pauses the whole system.
+   - The cycle's judgment and the visual session may only leave `MEMORY.md`, `memory/`, the backlog and the proposals uncommitted. When either one finds anything else uncommitted, its scope guard pauses the whole system.
    - So commit right after editing. Edit while `bash bin/cycle_status.sh` shows no cycle judging and no visual session.
    - If the system paused itself this way, commit the change, then `rm log/PAUSE`.
 5. **Say when it takes effect**: `set` prints which script reads it. Every script reads its settings on each run, so the next cycle, dispatch or agent call uses the new value.

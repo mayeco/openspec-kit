@@ -16,7 +16,8 @@ Read-only. Never approve, unblock, pause, resume, edit or start anything here; o
    Add `--json` when you need exact figures or lists. Every number you give comes from this output; never estimate one.
 2. When something looks stuck, add the instant snapshot: `bash bin/cycle_status.sh` (locks, processes, worktrees, child repositories).
 3. For the judgment's own account of the last cycle (what it verified, found and proposed), read the newest file in `log/cycle/reports/` (visual sessions: `visual-*.md`).
-4. For one change: `log/blocked/<change>.json` (`reason`, `details`), `log/workers/<change>.log`, its archived proposal in `openspec/changes/archive/`.
+4. For one change: `log/blocked/<change>.json` (`reason`, `details`), `log/workers/<change>.log`, its archived proposal in `openspec/changes/archive/`, and its `repairs.md` (what each repair round was asked to fix and whether it then passed).
+5. When the person asks whether an edit of the agents' prompts or of the memory helped: `ruby bin/prompt_report.rb --since 30d` (`--by memory` for the memory). Say how many changes each version started; a version with a few says little.
 
 ## Answer
 
@@ -27,7 +28,7 @@ Short, in the person's language, in four blocks:
 3. **Pending**: the backlog by state, proposals waiting, the visual queue, roadmap progress.
 4. **Needs you**: one line per item, with the command that resolves it:
    - a blocked change: read its reason; for `risk_review`, review the diff, `touch log/approved/<change>`, then `rm log/blocked/<change>.json`;
-   - a proposal waiting: `ruby bin/proposals.rb approve <change>` or `reject <change>`;
+   - a proposal waiting: `ruby bin/proposals.rb approve <change>` or `reject <change>`; for a prompt proposal, read it first with `ruby bin/proposals.rb show <change>`;
    - a pause: fix the reason, then `rm log/PAUSE`;
    - a visual check that could not verify: what was missing, from its note.
 
