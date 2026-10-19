@@ -35,6 +35,7 @@ PROMPT_FILE="${2:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT="$(cat "$PROMPT_FILE")"
 SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
 LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
+IDLE_LIMIT="$(ruby "$SETTINGS" get limits.agent_idle_seconds)"   # 0: no watchdog
 PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
 AGENTS_RB="$(cd "$(dirname "$0")" && pwd)/lib/agents.rb"   # absolute: this script cds into the work directory
 ORDER="$(ruby "$AGENTS_RB" order)"   # fallback | random | spread
@@ -59,14 +60,81 @@ bounded() {
   "$TIMEOUT_BIN" --kill-after=60 "$LIMIT" "$@" &
   TIMEOUT_PID=$!
   trap forward_signal INT TERM
+  WATCH_PID=""
+  if [ "$IDLE_LIMIT" -gt 0 ]; then
+    watch_idle "$TIMEOUT_PID" &
+    WATCH_PID=$!
+  fi
   local rc=0
   # A trapped signal makes wait return early (status > 128): keep waiting until timeout exits.
   while :; do
     wait "$TIMEOUT_PID" && rc=0 || rc=$?
     kill -0 "$TIMEOUT_PID" 2>/dev/null || break
   done
+  stop_watch
   trap - INT TERM # a signal during a retry's wait stops this script
   return "$rc"
+}
+
+# The idle watchdog: an engine whose process tree uses no CPU, whose work directory does
+# not change and whose output does not grow for limits.agent_idle_seconds has stalled,
+# like a CLI that froze on a rate limit instead of exiting. It is stopped (TERM to timeout,
+# which passes it on) and IDLE_MARK says so. CPU counts over the whole quiet stretch, so an
+# engine that waits on its model while it streams stays alive.
+watch_idle() { # <timeout pid>
+  local pid="$1" every since=0 cpu0 cpu state0 state
+  every=$(( IDLE_LIMIT / 4 )); [ "$every" -lt 1 ] && every=1; [ "$every" -gt 60 ] && every=60
+  cpu0="$(tree_cpu "$pid")"; state0="$(activity_state)"
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep "$every"
+    cpu="$(tree_cpu "$pid")"; state="$(activity_state)"
+    if [ $(( cpu - cpu0 )) -ge 1 ] || [ "$state" != "$state0" ]; then
+      since=0; cpu0="$cpu"; state0="$state"
+    else
+      since=$(( since + every ))
+    fi
+    if [ "$since" -ge "$IDLE_LIMIT" ]; then
+      echo "$since" > "$IDLE_MARK"
+      kill -TERM "$pid" 2>/dev/null
+      return 0
+    fi
+  done
+}
+
+stop_watch() {
+  [ -n "${WATCH_PID:-}" ] || return 0
+  kill "$WATCH_PID" 2>/dev/null; wait "$WATCH_PID" 2>/dev/null || true
+  WATCH_PID=""
+}
+
+# Whole CPU seconds used so far by a process and all its descendants (ps prints M:SS.ss,
+# H:MM:SS or D-HH:MM:SS, depending on the system). Where ps can (-S), each process also
+# carries the CPU of its children that already exited: a build or a test run made of many
+# short processes counts.
+PS_SUM=""
+ps -S -o time= -p $$ >/dev/null 2>&1 && PS_SUM="-S"
+tree_cpu() { # <pid>
+  local all="$1" frontier="$1" next p
+  while [ -n "$frontier" ]; do
+    next=""
+    for p in $frontier; do next="$next $({ pgrep -P "$p" 2>/dev/null || true; } | tr '\n' ' ')"; done
+    next="$(echo $next)"
+    all="$all $next"; frontier="$next"
+  done
+  { ps $PS_SUM -o time= -p "$(echo $all | tr ' ' ',')" 2>/dev/null || true; } | awk '
+    { t = $1; d = 0; if (index(t, "-")) { split(t, a, "-"); d = a[1]; t = a[2] }
+      n = split(t, f, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + f[i]; total += d * 86400 + s }
+    END { printf "%d\n", total }'
+}
+
+# What an engine changes while it works: the work directory, including the content of
+# untracked files (a new file it keeps writing), and the size of its own output.
+activity_state() {
+  { tree_state
+    { git ls-files --others --exclude-standard | git hash-object --stdin-paths; } 2>/dev/null || true
+    git submodule foreach --quiet --recursive 'git ls-files --others --exclude-standard | git hash-object --stdin-paths' 2>/dev/null || true
+    wc -c < "$ATTEMPT_OUT" 2>/dev/null || true
+  } | cksum
 }
 
 # Agents MUST NOT commit, push, switch branches or rewrite canonical specs: the
@@ -125,11 +193,17 @@ NOTE
 }
 
 run_engine() { # <engine>
-  local ENGINE="$1"
+  local ENGINE="$1" arg
   if [ "$ENGINE" != stub ] && ! command -v "$ENGINE" >/dev/null 2>&1; then
     echo "agent_exec: $ENGINE is not installed" >&2
     return 127
   fi
+  # extra_args of config/agents.yaml: the application's own arguments for this agent (a
+  # model, a provider), placed before the prompt. ${EXTRA[@]+...} keeps an empty list
+  # harmless under set -u in bash 3.2.
+  EXTRA=()
+  while IFS= read -r -d '' arg; do EXTRA+=("$arg"); done < <(ruby "$AGENTS_RB" extra-args "$ENGINE" 2>/dev/null)
+  [ "${#EXTRA[@]}" -eq 0 ] || echo "agent_exec: $ENGINE extra_args: ${EXTRA[*]}" >&2
   case "$ENGINE" in
     claude)
       if [ "$PERMISSIONS" = restricted ]; then
@@ -142,20 +216,20 @@ run_engine() { # <engine>
         "${MODE[@]}" \
         --disallowedTools "$CLAUDE_DENIED" \
         --max-budget-usd "$(ruby "$SETTINGS" get limits.agent_budget_usd)" \
-        --no-session-persistence
+        --no-session-persistence ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     hermes)
       # --yolo disables approval prompts: run inside a sandbox/container only.
-      bounded hermes -z "$PROMPT" --yolo --accept-hooks
+      bounded hermes -z "$PROMPT" --yolo --accept-hooks ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     opencode)
-      bounded opencode run --format json "$PROMPT"
+      bounded opencode run --format json ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       ;;
     codex)
       if [ "$PERMISSIONS" = restricted ]; then
-        bounded codex exec --full-auto "$PROMPT"
+        bounded codex exec --full-auto ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       else
-        bounded codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
+        bounded codex exec --dangerously-bypass-approvals-and-sandbox ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       fi
       ;;
     agy)
@@ -164,23 +238,23 @@ run_engine() { # <engine>
       # terminal in Antigravity's sandbox, approving inside it, as Codex's --full-auto does.
       SANDBOX=""
       [ "$PERMISSIONS" = restricted ] && SANDBOX=--sandbox
-      bounded agy -p "$PROMPT" --print-timeout "${LIMIT}s" --dangerously-skip-permissions ${SANDBOX:+"$SANDBOX"}
+      bounded agy -p "$PROMPT" --print-timeout "${LIMIT}s" --dangerously-skip-permissions ${SANDBOX:+"$SANDBOX"} ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     kilo)
       # Kilo Code's CLI. run is headless; its code agent edits (the default one, ask, does
       # not). all approves every tool its rules do not deny (--auto); restricted leaves
       # Kilo's own permission rules in charge.
       if [ "$PERMISSIONS" = restricted ]; then
-        bounded kilo run --agent code "$PROMPT"
+        bounded kilo run --agent code ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       else
-        bounded kilo run --agent code --auto "$PROMPT"
+        bounded kilo run --agent code --auto ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       fi
       ;;
     cline)
       # Cline's CLI. A prompt runs one headless turn in act mode and exits; --yolo approves
       # every tool, ends the run when the turn finishes and leaves out the spawn and team
       # tools. Cline has no sandbox and no allowlist, so restricted changes nothing for it.
-      bounded cline --yolo --cwd "$PWD" "$PROMPT"
+      bounded cline --yolo --cwd "$PWD" ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       ;;
     pi)
       # pi, the coding agent. -p runs headless and exits nonzero when the turn ends in an error;
@@ -189,9 +263,9 @@ run_engine() { # <engine>
       # .pi/skills and .agents/skills; restricted loads none of the project's extensions,
       # settings or skills (--no-approve). Its tools keep the process's permissions either way.
       if [ "$PERMISSIONS" = restricted ]; then
-        bounded pi -p --no-session --no-approve -- "$PROMPT"
+        bounded pi -p --no-session --no-approve ${EXTRA[@]+"${EXTRA[@]}"} -- "$PROMPT"
       else
-        bounded pi -p --no-session --approve -- "$PROMPT"
+        bounded pi -p --no-session --approve ${EXTRA[@]+"${EXTRA[@]}"} -- "$PROMPT"
       fi
       ;;
     omp)
@@ -199,9 +273,9 @@ run_engine() { # <engine>
       # fails. all approves every tool (--approval-mode=yolo); restricted leaves omp's own
       # tools.approvalMode and per-tool policies in charge (omp config).
       if [ "$PERMISSIONS" = restricted ]; then
-        bounded omp -p --no-session "$PROMPT"
+        bounded omp -p --no-session ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       else
-        bounded omp -p --no-session --approval-mode=yolo "$PROMPT"
+        bounded omp -p --no-session --approval-mode=yolo ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
       fi
       ;;
     crush)
@@ -209,17 +283,17 @@ run_engine() { # <engine>
       # session, so restricted changes nothing for it (disabled_tools and hooks in its
       # crush.json are the way to restrict it). It reads piped stdin into the prompt: give
       # it none, so it never waits on an open pipe.
-      bounded crush run --quiet "$PROMPT" </dev/null
+      bounded crush run --quiet ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT" </dev/null
       ;;
     copilot)
       DENY=()
       IFS=',' read -ra RULES <<< "$COPILOT_DENIED"
       for rule in "${RULES[@]}"; do DENY+=(--deny-tool "$rule"); done
-      bounded copilot -p "$PROMPT" --silent --allow-all-tools "${DENY[@]}"
+      bounded copilot -p "$PROMPT" --silent --allow-all-tools "${DENY[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     stub)
       # Deterministic fake agent for the orchestrator's own tests.
-      bounded bash "${AGENT_STUB:?AGENT_STUB must point to a stub script}" "$RUN_PROMPT_FILE"
+      bounded bash "${AGENT_STUB:?AGENT_STUB must point to a stub script}" "$RUN_PROMPT_FILE" ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     *)
       echo "agent_exec: unknown engine ${ENGINE:-none} (set AGENT_ENGINE)" >&2
@@ -235,7 +309,8 @@ RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
 BASE_PROMPT="$PROMPT"
 RUN_PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-prompt.XXXXXX")" # the stub reads its prompt from a file
 ATTEMPT_OUT="$(mktemp "${TMPDIR:-/tmp}/agent-out.XXXXXX")" # one attempt's output, read for a usage limit
-trap 'rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT"; ruby "$AGENTS_RB" release $$ 2>/dev/null' EXIT
+IDLE_MARK="$(mktemp "${TMPDIR:-/tmp}/agent-idle.XXXXXX")" # non-empty once the watchdog stopped an engine
+trap 'stop_watch; rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT" "$IDLE_MARK"; ruby "$AGENTS_RB" release $$ 2>/dev/null' EXIT
 # The engines in the order this call tries them; the first is registered as run by this call.
 ARRANGED="$(ruby "$AGENTS_RB" arrange "$ENGINES" $$)" || ARRANGED="$ENGINES"
 IFS=',' read -ra LIST <<< "$ARRANGED"
@@ -251,8 +326,13 @@ for i in "${!LIST[@]}"; do
   while :; do
     printf '%s' "$PROMPT" > "$RUN_PROMPT_FILE"
     rc=0
+    : > "$IDLE_MARK"
     run_engine "$engine" > "$ATTEMPT_OUT" 2>&1 || rc=$?
     cat "$ATTEMPT_OUT"
+    if [ -s "$IDLE_MARK" ]; then
+      echo "agent_exec: $engine stalled: no CPU, no change in the work directory and no output for $(cat "$IDLE_MARK")s; stopped it" >&2
+      [ "$rc" -eq 0 ] && rc=124 # whatever it printed on its way out, the attempt did not finish
+    fi
     # Parsed by the dispatcher for its agent.exit event.
     echo "agent_exec: engine $engine exited $rc" >&2
     [ "$rc" -eq 0 ] && exit 0
@@ -261,6 +341,7 @@ for i in "${!LIST[@]}"; do
     if [ "$(tree_state)" != "$START" ]; then
       reason="exit $rc"
       [ "$rc" -eq 124 ] && reason="it hit the time limit"
+      [ -s "$IDLE_MARK" ] && reason="it stalled, doing nothing for $(cat "$IDLE_MARK")s"
       PROMPT="$BASE_PROMPT
 $(continuation_note "$engine ($reason)")"
     fi

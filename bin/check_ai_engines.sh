@@ -47,12 +47,19 @@ for role in plan build cycle; do
 done
 SELECTED=" $SELECTED "
 WORKING=""
-probe() { # <name> <command...>
+probe() { # <name> <command...>, with @EXTRA@ where agent_exec.sh puts the agent's extra_args
   local name="$1"; shift
   [ "$SELECTED" = "  " ] || [[ "$SELECTED" == *" $name "* ]] || return 0
   command -v "$name" >/dev/null 2>&1 || { echo "  $name: not installed"; return; }
+  # The ping runs as the pipeline's calls do: with the application's extra_args (a model the
+  # agent only answers with, for example), in the same place.
+  local extra=() cmd=() arg
+  while IFS= read -r -d '' arg; do extra+=("$arg"); done < <(ruby bin/lib/agents.rb extra-args "$name" 2>/dev/null)
+  for arg in "$@"; do
+    if [ "$arg" = @EXTRA@ ]; then cmd+=(${extra[@]+"${extra[@]}"}); else cmd+=("$arg"); fi
+  done
   local out rc=0
-  out="$(bounded "$@" 2>&1)" || rc=$?
+  out="$(bounded "${cmd[@]}" 2>&1)" || rc=$?
   if printf '%s' "$out" | grep -qiE "$AUTH_ERRORS"; then
     echo "  $name: FAILED (authentication)"
   elif [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
@@ -65,17 +72,17 @@ probe() { # <name> <command...>
   fi
 }
 # A ping in a real workspace costs Claude Code about $0.07 (its context), so its cap is $0.50.
-probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.50 --no-session-persistence
-probe codex    codex exec "Reply with the single word: pong"
-probe copilot  copilot -p "Reply with the single word: pong" --silent
-probe hermes   hermes -z "Reply with the single word: pong"
-probe opencode opencode run "Reply with the single word: pong"
-probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s
-probe kilo     kilo run --agent code "Reply with the single word: pong"
-probe cline    cline --yolo "Reply with the single word: pong"
-probe pi       pi -p --no-session -- "Reply with the single word: pong"
-probe omp      omp -p --no-session "Reply with the single word: pong"
-probe crush    crush run --quiet "Reply with the single word: pong"
+probe claude   claude -p "Reply with the single word: pong" --max-budget-usd 0.50 --no-session-persistence @EXTRA@
+probe codex    codex exec @EXTRA@ "Reply with the single word: pong"
+probe copilot  copilot -p "Reply with the single word: pong" --silent @EXTRA@
+probe hermes   hermes -z "Reply with the single word: pong" @EXTRA@
+probe opencode opencode run @EXTRA@ "Reply with the single word: pong"
+probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s @EXTRA@
+probe kilo     kilo run --agent code @EXTRA@ "Reply with the single word: pong"
+probe cline    cline --yolo @EXTRA@ "Reply with the single word: pong"
+probe pi       pi -p --no-session @EXTRA@ -- "Reply with the single word: pong"
+probe omp      omp -p --no-session @EXTRA@ "Reply with the single word: pong"
+probe crush    crush run --quiet @EXTRA@ "Reply with the single word: pong"
 
 # Every role must have a working engine among its list (stub: the kit's own tests).
 # agent_exec.sh falls back along the list, so a dead fallback is only a warning.

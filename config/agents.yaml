@@ -33,3 +33,9 @@ order: fallback
 # restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates
 # and ask Jev; Codex and Antigravity (agy) keep their sandbox; Kilo and omp follow their own approval settings; pi loads no project extensions. Hermes, Copilot, OpenCode, Cline and Crush ignore it.
 permissions: all
+# Arguments added to an agent's command line on every call, besides the kit's own:
+# a model, a provider, a profile. A string is split as a shell would split it; a list
+# is taken as it is. One line per agent, for example:
+#   claude: "--model claude-opus-5-5"
+#   kilo: "-m kilo/~anthropic/claude-sonnet-latest"
+extra_args: {}

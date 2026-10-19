@@ -31,6 +31,7 @@ module OpenSpecSettings
     'dispatch.blocked_retries' => ['OPENSPEC_BLOCKED_RETRIES', 1],
     'dispatch.blocked_retry_hours' => ['OPENSPEC_BLOCKED_RETRY_HOURS', 1],
     'limits.agent_seconds' => ['AGENT_TIMEOUT_SECONDS', 7200],
+    'limits.agent_idle_seconds' => ['AGENT_IDLE_SECONDS', 1200],
     'limits.agent_retries' => ['AGENT_RETRIES', 1],
     'limits.agent_retry_delay_seconds' => ['AGENT_RETRY_DELAY_SECONDS', 120],
     'limits.agent_budget_usd' => ['AGENT_MAX_BUDGET_USD', 5],
@@ -41,7 +42,7 @@ module OpenSpecSettings
   DECIMAL = %w[limits.agent_budget_usd].freeze
   # Counts where 0 turns the behavior off; every other number must be above 0.
   ZERO_OK = %w[dispatch.conflict_rebuilds dispatch.aging_hours dispatch.blocked_retries dispatch.blocked_retry_hours
-               limits.agent_retries limits.agent_retry_delay_seconds].freeze
+               limits.agent_idle_seconds limits.agent_retries limits.agent_retry_delay_seconds].freeze
   BRANCH = %r{\A[A-Za-z0-9._/-]+\z}
 
   class Error < StandardError; end

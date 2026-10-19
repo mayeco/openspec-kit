@@ -41,7 +41,10 @@ module OpenSpecKit
   # New applications get the .gitignore seed; an existing one gets what it lacks.
   GITIGNORE = {
     '/.worktrees/' => %w[.worktrees/ /.worktrees/ .worktrees /.worktrees],
-    '/log/*' => %w[log/ /log/ log /log log/* /log/*]
+    '/log/*' => %w[log/ /log/ log /log log/* /log/*],
+    # A changed seed template an upgrade puts beside the application's file: to review and
+    # delete, never to commit (and an untracked one would pause the next cycle).
+    '*.new' => %w[*.new /*.new **/*.new]
   }.freeze
 
   class Error < StandardError; end
@@ -211,7 +214,7 @@ module OpenSpecKit
 
     File.open(path, 'a') do |f|
       f.puts unless present.empty? || File.read(path).end_with?("\n")
-      f.puts('# OpenSpec orchestration runtime state', *missing)
+      f.puts('# OpenSpec orchestration kit: runtime state, and the <file>.new an upgrade proposes', *missing)
     end
   end
 
@@ -316,6 +319,10 @@ module OpenSpecKit
     edited_seeds.each { |rel| puts "  review #{rel}: v#{manifest['version']} no longer ships it; kept because you edited it, so it is yours now" }
     return unless git
 
+    # The <file>.new proposals stay on disk for review and out of git, in this commit and later.
+    append_gitignore(target)
+    tracked_new = git(target, 'ls-files', '--', '*.new').split("\n")
+    git(target, 'rm', '--cached', '--quiet', '--', *tracked_new) if tracked_new.any?
     git(target, 'add', '-A')
     message = same_version ? "chore(kit): use the agents #{agents.join(', ')}" : "chore(kit): upgrade the OpenSpec kit to v#{manifest['version']}"
     git(target, 'commit', '--quiet', '-m', message)

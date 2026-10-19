@@ -3,6 +3,9 @@
 /log/*
 !/log/.keep
 /.worktrees/
+# A kit upgrade puts a changed template beside your file as <file>.new: review it, merge
+# what you need, delete it. It is never committed.
+*.new
 
 # Operating systems and editors
 .DS_Store

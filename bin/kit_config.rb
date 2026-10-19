@@ -37,6 +37,7 @@
 require 'digest'
 require 'json'
 require 'open3'
+require 'shellwords'
 require 'yaml'
 require_relative 'lib/agents'
 require_relative 'lib/memory'
@@ -101,6 +102,8 @@ module KitConfig
     'dispatch.blocked_retry_hours' => ['how long a quarantined change waits before its automatic retry; 0: at the next dispatch',
                                        'bin/openspec_dispatcher.rb, bin/cycle_status.sh, bin/cycle_progress.rb'],
     'limits.agent_seconds' => ['limit of one agent call', 'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
+    'limits.agent_idle_seconds' => ['an agent with no CPU, no change in its work directory and no output for this long has stalled and is stopped; 0: never',
+                                    'bin/agent_exec.sh'],
     'limits.agent_retries' => ['extra attempts with the same agent after a failure, before the next agent of the role (none after a usage limit); 0: none',
                                'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
     'limits.agent_retry_delay_seconds' => ['wait before trying the same agent again', 'bin/agent_exec.sh'],
@@ -124,6 +127,11 @@ module KitConfig
             "random: any of them first, then the others in the order listed, spreading the calls over the agents' quotas; " \
             'spread: like random, among the agents the fewest running calls use, so changes built at once go to different agents (AGENT_ORDER overrides it for one run)',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::ORDERS),
+    setting('agents.extra_args', :args, {},
+            "arguments added to an agent's command line on every call, besides the kit's own (a model, a provider, a profile): " \
+            'agent => a string split as a shell would split it, or a list; the preflight pings with them too',
+            'bin/agent_exec.sh, on every agent call; bin/check_ai_engines.sh',
+            change: 'edit config/agents.yaml by hand, one line per agent under extra_args, then check'),
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
             'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo and omp on their own approval settings, pi without project extensions (hermes, copilot, opencode, cline and crush ignore it)',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::PERMISSIONS),
@@ -428,6 +436,21 @@ module KitConfig
       "must list agents among #{OpenSpecAgents::SUPPORTED.keys.join(', ')}" if list.empty? || (list - OpenSpecAgents::SUPPORTED.keys).any?
     when :string, :path then 'must be text' unless value.is_a?(String)
     when :list then 'must be a list' unless value.is_a?(Array)
+    when :args
+      return 'must map agents to their arguments (a string or a list)' unless value.is_a?(Hash)
+
+      value.each do |agent, args|
+        return "#{agent}: not an agent the kit supports (#{OpenSpecAgents::SUPPORTED.keys.join(', ')})" unless OpenSpecAgents::SUPPORTED.key?(agent.to_s)
+        next if args.is_a?(Array) && args.all? { |a| a.is_a?(String) || a.is_a?(Numeric) }
+        return "#{agent}: must be a string or a list of strings" unless args.is_a?(String)
+
+        begin
+          Shellwords.split(args)
+        rescue ArgumentError => e
+          return "#{agent}: cannot be split as a shell would (#{e.message})"
+        end
+      end
+      nil
     when :pipeline
       key = setting['key'].delete_prefix('pipeline.')
       "must be #{OpenSpecSettings.expected(key)}" if OpenSpecSettings.parse(key, value).nil?

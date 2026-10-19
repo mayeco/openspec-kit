@@ -25,6 +25,7 @@
 #   ruby bin/lib/agents.rb claim <agent> <pid>         # <pid> moved on to <agent>
 #   ruby bin/lib/agents.rb release <pid>               # <pid> ended
 #   ruby bin/lib/agents.rb in-use                      # the agents running calls now: claude 2, pi 1
+#   ruby bin/lib/agents.rb extra-args <agent>          # its extra_args, NUL-separated, for agent_exec.sh
 #
 # AGENT_ENGINE_PLAN, AGENT_ENGINE_BUILD, AGENT_ENGINE_CYCLE and AGENT_ENGINE
 # (an agent or a comma list) override the selection for one run (tests, a manual
@@ -33,6 +34,8 @@
 # ==============================================================================
 
 require 'fileutils'
+require 'json'
+require 'shellwords'
 require 'yaml'
 
 module OpenSpecAgents
@@ -111,7 +114,24 @@ module OpenSpecAgents
     data = YAML.safe_load_file(path) || {}
     agents = Array(data['agents']).map(&:to_s)
     roles = (data['roles'] || {}).to_h { |role, list| [role.to_s, names(list)] }
-    { 'agents' => agents, 'roles' => roles, 'permissions' => data['permissions']&.to_s, 'order' => data['order']&.to_s }
+    extra = data['extra_args'].is_a?(Hash) ? data['extra_args'].to_h { |agent, args| [agent.to_s, args] } : {}
+    { 'agents' => agents, 'roles' => roles, 'permissions' => data['permissions']&.to_s, 'order' => data['order']&.to_s,
+      'extra_args' => extra }
+  end
+
+  # The arguments an agent's command line gets on every call, besides the kit's own
+  # (extra_args in config/agents.yaml: a model, a provider, a profile). A string is split
+  # as a shell would split it, quotes included; a list is taken as it is.
+  def extra_args(root, agent)
+    value = load(root)&.dig('extra_args', agent)
+    case value
+    when nil then []
+    when Array then value.map(&:to_s)
+    else Shellwords.split(value.to_s)
+    end
+  rescue ArgumentError => e
+    warn "agents: extra_args.#{agent} cannot be split (#{e.message}); none used"
+    []
   end
 
   # How each call picks among a role's agents: AGENT_ORDER, then config/agents.yaml,
@@ -216,6 +236,7 @@ module OpenSpecAgents
     current = load(root)
     permissions = current&.fetch('permissions') || DEFAULT_PERMISSIONS
     order ||= current&.fetch('order') || DEFAULT_ORDER
+    extra = current&.fetch('extra_args') || {}
     raise Error, "unknown order #{order} (#{ORDERS.join(', ')})" unless ORDERS.include?(order)
     lines = ['# The agents this application uses, written by install.sh (init, or upgrade --agents).',
              '# Each one gets the skills in its own directory. The scripts read the roles from here,',
@@ -242,7 +263,13 @@ module OpenSpecAgents
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
                '# restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates',
                '# and ask Jev; Codex and Antigravity (agy) keep their sandbox; Kilo and omp follow their own approval settings; pi loads no project extensions. Hermes, Copilot, OpenCode, Cline and Crush ignore it.',
-               "permissions: #{permissions}")
+               "permissions: #{permissions}",
+               "# Arguments added to an agent's command line on every call, besides the kit's own:",
+               '# a model, a provider, a profile. A string is split as a shell would split it; a list',
+               '# is taken as it is. One line per agent, for example:',
+               '#   claude: "--model claude-opus-5-5"',
+               '#   kilo: "-m kilo/~anthropic/claude-sonnet-latest"',
+               *(extra.empty? ? ['extra_args: {}'] : ['extra_args:', *extra.map { |agent, args| "  #{agent}: #{args.to_json}" }]))
     path = File.join(root, CONFIG)
     File.write(path, "#{lines.join("\n")}\n")
   end
@@ -256,13 +283,14 @@ if __FILE__ == $PROGRAM_NAME
     in ['list'] then puts((OpenSpecAgents.load(root) || {}).fetch('agents', []).join(' '))
     in ['permissions'] then puts OpenSpecAgents.permissions(root)
     in ['order'] then puts OpenSpecAgents.order(root)
+    in ['extra-args', agent] then OpenSpecAgents.extra_args(root, agent).each { |arg| print arg, "\0" }
     in ['arrange', list, pid] then puts OpenSpecAgents.arrange(root, list, Integer(pid)).join(',')
     in ['claim', agent, pid] then OpenSpecAgents.claim(root, agent, Integer(pid))
     in ['release', pid] then OpenSpecAgents.release(root, Integer(pid))
     in ['in-use'] then puts OpenSpecAgents.registry(root) { OpenSpecAgents.in_use(root) }.sort.map { |a, n| n > 1 ? "#{a} #{n}" : a }.join(', ')
     else
       warn 'Usage: ruby bin/lib/agents.rb engine <plan|build|cycle> | list | order | permissions | arrange <list> <pid> | ' \
-           'claim <agent> <pid> | release <pid> | in-use'
+           'claim <agent> <pid> | release <pid> | in-use | extra-args <agent>'
       exit 2
     end
   rescue OpenSpecAgents::Error => e

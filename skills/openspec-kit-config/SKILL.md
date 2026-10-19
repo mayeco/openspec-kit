@@ -36,7 +36,8 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | How strict is Jev? | `jev.gates.<gate>.mode` (`off`, `advisory`, `enforce`), the gate's thresholds, `jev.on_unavailable`. What each gate answered, and what `enforce` would have stopped: `ruby bin/jev_report.rb` |
 | What runs before a change merges? | The `gates` of each `repos/<name>/repo.config.yaml` (fast: after every BUILD and again at merge); its `regression` commands run once per cycle |
 | Which branch? | `pipeline.base_branch` for the application, `base_branch` in each child repository's `repo.config.yaml` |
-| How many changes at once, and how long may things take? | `pipeline.dispatch.workers`, `pipeline.dispatch.wait_seconds`, `pipeline.limits.agent_seconds`, `.agent_budget_usd`, `.gate_seconds`, `.lease_seconds` |
+| How many changes at once, and how long may things take? | `pipeline.dispatch.workers`, `pipeline.dispatch.wait_seconds`, `pipeline.limits.agent_seconds`, `.agent_idle_seconds` (an agent idle that long has stalled and is stopped; 0: never), `.agent_budget_usd`, `.gate_seconds`, `.lease_seconds` |
+| Does an agent need a model, a provider or another option on every call? | `agents.extra_args`: agent => its arguments (a string split as a shell would, or a list), added to every call and to the preflight's ping. Edit `config/agents.yaml` by hand, then `check` |
 | What happens to conflicts and to low items? | `pipeline.dispatch.conflict_rebuilds` (automatic rebuilds on the new base before `rebase_conflict`), `pipeline.dispatch.aging_hours` (one priority up per that many hours waiting) |
 | Is a blocked change tried again? | `pipeline.dispatch.blocked_retries` (automatic retries of a change quarantined for a reason that can heal on its own, such as `gate_failure` or `push_failed`; never `policy_violation`, `spec_ambiguity`, `risk_review`, `missing_child_commits` or a system failure) and `pipeline.dispatch.blocked_retry_hours` (the wait before each). The `BLOCKED` lines of `bash bin/cycle_status.sh` say when the next retry comes, or why none will |
 | What do the agents read? | `config/prompts/plan.md`, `build.md`, `cycle.md`: the prompts, this application's own (`show prompts`) |
@@ -68,7 +69,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | An agent's prompt (`show prompts`) | Edit `config/prompts/plan.md`, `build.md` or `cycle.md` by hand: keep the `{{placeholders}}` its header comment names (`{{feedback}}` above all: without it a repair round never sees what failed), run `check`, show the result with `ruby bin/lib/prompts.rb render <name> change=demo ...`, then commit it like a setting |
 | An environment variable (`show env`) | Only for one manual run, such as a test or a retry; never in a scheduled prompt or a crontab line. Each setting of `config/pipeline.yaml` has one that overrides it, and `check` warns while one is set |
 | `bin/`, `config/templates/`, the `openspec-kit-*` skills, `INSTALL.md`, `SCHEDULING.md` | Never edit them: they are the kit's. An upgrade replaces them, and the preflight fails while they differ. A need there is a change to the framework |
-| `<file>.new` next to a setting after an upgrade | The new template. Merge what you need into the file, then delete the `.new` |
+| `<file>.new` next to a setting after an upgrade | The new template, kept out of git (`*.new` is ignored). Merge what you need into the file, then delete the `.new` |
 
 ## Common changes
 

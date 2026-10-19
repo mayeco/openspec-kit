@@ -38,6 +38,11 @@ dispatch:
 
 limits:
   agent_seconds: 7200 # one attempt of an agent (the cycle's judgment: qa_time_budget_minutes + 15); AGENT_TIMEOUT_SECONDS
+  # An agent whose processes use no CPU, whose work directory does not change and whose
+  # output does not grow for this many seconds has stalled (a CLI that froze instead of
+  # exiting): it is stopped, and the attempt counts as failed. Work it runs outside its own
+  # processes (inside containers) is not seen. 0: never. AGENT_IDLE_SECONDS
+  agent_idle_seconds: 1200
   # An agent call that fails (timeout, usage limit, error) is tried again this many
   # times with the same agent, then with the next agent of its role. An attempt that
   # left changes is followed by one told what it changed, to continue from there.
