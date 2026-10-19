@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.16.0",
-  "source_commit": "a6f1cfd2c790c6f674d23b071b41d1b71d3d20fb",
+  "version": "2.17.0",
+  "source_commit": "0519f7ae319cb88a99ee20261c1d06b4180bb764",
   "source_dirty": false,
-  "built_at": "2026-10-19T21:18:55Z",
+  "built_at": "2026-10-19T22:35:48Z",
   "toolchain": {
     "openspec": "1.14.3",
     "git": "2.56.0",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "09a3bade92e12785a112bec0de71467c831f606731106cd972a375f0a1ac64dc"
+      "sha256": "0a7da9433ca25a5a0cf382f3e9f188737ad2e7314dc37ff5e015ccbab3bdca16"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -114,7 +114,7 @@
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "039737fd3ed03929f44be82134468e7031ccf62779be42a716d5e14b10130c08"
+      "sha256": "7008c876a4458bb2274c61babc4a83a8b011f0b41bf221f0d10db43e683d45a7"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
@@ -330,7 +330,7 @@
     },
     "skills/openspec-kit-status/SKILL.md": {
       "class": "skill",
-      "sha256": "43b27ae514643ca8a5ae56e65806a7611df35fb6122d0b66c51b306fe9abee8e"
+      "sha256": "c6d557ee61168ee19eaf23d30e99832caf077617049e9005a4465c0dcf03e14d"
     },
     "skills/openspec-kit-visual-qa/SKILL.md": {
       "class": "skill",

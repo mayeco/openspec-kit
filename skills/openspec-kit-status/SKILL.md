@@ -15,6 +15,7 @@ Read-only. Never approve, unblock, pause, resume, edit or start anything here; o
    ```
    Add `--json` when you need exact figures or lists. Every number you give comes from this output; never estimate one.
 2. When something looks stuck, add the instant snapshot: `bash bin/cycle_status.sh` (locks, processes, worktrees, child repositories).
+   When the person asks what comes next, or why an item has not started: `ruby bin/openspec_dispatcher.rb --dry-run` (`--json` for exact fields). It is read-only and works while a dispatch runs: every pending item in the order it would start, its priority after aging, how long it waited, and what holds it (building, waiting for the merger, blocked and its retry, a dependency and that dependency's state, a capability in use, or already ended by the running dispatch, so it starts in the next one).
 3. For the judgment's own account of the last cycle (what it verified, found and proposed), read the newest file in `log/cycle/reports/` (visual sessions: `visual-*.md`).
 4. For one change: `log/blocked/<change>.json` (`reason`, `details`), `log/workers/<change>.log`, its archived proposal in `openspec/changes/archive/`, and its `repairs.md` (what each repair round was asked to fix and whether it then passed).
 5. When the person asks whether an edit of the agents' prompts or of the memory helped: `ruby bin/prompt_report.rb --since 30d` (`--by memory` for the memory). Say how many changes each version started; a version with a few says little.

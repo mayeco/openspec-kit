@@ -50,6 +50,9 @@ class OpenSpecDispatcher
   ENGINES_DOWN = 75
   DEFERRAL_LIMIT = 3
   DEFERRALS_FILE = File.join(O::LOG_DIR, 'deferrals.json')
+  # How the running dispatch ended each change it handled ({pid, started_at, workers,
+  # results}), so a dry run can say which ones it will not take again.
+  RESULTS_FILE = File.join(O::LOG_DIR, 'dispatch_results.json')
   # The engine of each phase: its role in config/agents.yaml, unless an AGENT_ENGINE* variable overrides it.
   ENGINE_PLAN = OpenSpecAgents.engine(O::ROOT, 'plan')
   ENGINE_BUILD = OpenSpecAgents.engine(O::ROOT, 'build')
@@ -72,12 +75,14 @@ class OpenSpecDispatcher
   # Every engine of an agent call failed without changing anything (agent_exec.sh exit 75).
   class EnginesDown < StandardError; end
 
-  def initialize(max_workers:, repair_attempts:, backlog_file:, wait:, dry_run:, engine_plan: ENGINE_PLAN, engine_build: ENGINE_BUILD)
+  def initialize(max_workers:, repair_attempts:, backlog_file:, wait:, dry_run:, json: false, engine_plan: ENGINE_PLAN,
+                 engine_build: ENGINE_BUILD)
     @max_workers = max_workers
     @repair_attempts = repair_attempts
     @backlog_file = backlog_file
     @wait = wait
     @dry_run = dry_run
+    @json = json
     @engine_plan = engine_plan
     @engine_build = engine_build
     @git_mutex = Mutex.new    # serializes shared-.git operations (worktrees, config, refs)
@@ -96,6 +101,8 @@ class OpenSpecDispatcher
   end
 
   def run
+    return dry_run_report if @dry_run
+
     O.ensure_dirs!
     acquire_singleton!
     O.install_signal_handlers!
@@ -103,6 +110,8 @@ class OpenSpecDispatcher
     by_name = backlog.to_h { |i| [i['change_name'], i] }
     wait_deadline = nil
     O.emit('dispatcher.start', workers: @max_workers, backlog: backlog.size)
+    @started_at = Time.now.utc.iso8601
+    publish_results!
 
     loop do
       reap!
@@ -111,16 +120,12 @@ class OpenSpecDispatcher
       # as soon as a worker is free, instead of waiting for the next dispatch.
       backlog = load_backlog
       by_name = backlog.to_h { |i| [i['change_name'], i] }
-      retry_blocked!(backlog) unless @dry_run || O.paused? || @engines_down
+      retry_blocked!(backlog) unless O.paused? || @engines_down
       # A change the merger sent back for a rebuild is started again in this dispatch.
       @results.delete_if { |change, result| result == :ready && (O.read_json(O.rebuild_file(change)) || {})['requested'] }
       pending = backlog.reject { |item| @threads.key?(item['change_name']) || @results.key?(item['change_name']) }
       eligible = pending.select { |item| eligible?(item) }
-
-      if @dry_run
-        puts "eligible: #{eligible.map { |i| i['change_name'] }.join(', ')}"
-        return
-      end
+      publish_results!
 
       if O.paused? || @engines_down
         O.emit(O.paused? ? 'dispatcher.paused' : 'dispatcher.engines_down') if @threads.empty?
@@ -166,7 +171,7 @@ class OpenSpecDispatcher
 
   # The backlog in dispatch order. The file is parsed again only when it changed;
   # one caught mid-write (not valid JSON yet) keeps the last list that parsed.
-  def load_backlog
+  def load_backlog(record_seen: true)
     sig = File.exist?(@backlog_file) ? [File.mtime(@backlog_file).to_f, File.size(@backlog_file)] : nil
     if sig != @backlog_sig
       raw = O.read_json(@backlog_file)
@@ -183,7 +188,7 @@ class OpenSpecDispatcher
         @items = valid
       end
     end
-    waited = waited_hours(@items)
+    waited = waited_hours(@items, record: record_seen)
     sorted = @items.each_with_index.sort_by do |i, idx|
       [priority_of(i, waited[i['change_name']]), -(Float(i['impact_score'], exception: false) || 0.0), idx]
     end.map(&:first)
@@ -196,6 +201,9 @@ class OpenSpecDispatcher
     return if @reported[key]
 
     @reported[key] = true
+    # A dry run writes nothing: what it finds wrong in the backlog goes to stderr instead.
+    return warn("dispatcher: #{event} #{fields.map { |k, v| "#{k}=#{v}" }.join(' ')}") if @dry_run
+
     O.emit(event, **fields)
   end
 
@@ -211,11 +219,11 @@ class OpenSpecDispatcher
 
   # Hours each item has waited: since its queued_at, else since a dispatcher first
   # saw it (log/backlog_seen.json, kept across dispatches).
-  def waited_hours(items)
+  def waited_hours(items, record: true)
     @seen ||= O.read_json(SEEN_FILE) || {}
     names = items.map { |i| i['change_name'] }
     now = Time.now.utc
-    unless (names - @seen.keys).empty? && (@seen.keys - names).empty?
+    unless !record || ((names - @seen.keys).empty? && (@seen.keys - names).empty?)
       (names - @seen.keys).each { |name| @seen[name] = now.iso8601 }
       @seen.select! { |name, _| names.include?(name) }
       O.write_json_atomic(SEEN_FILE, @seen)
@@ -230,10 +238,138 @@ class OpenSpecDispatcher
     return if !force && Time.now - @last_fetch < FETCH_EVERY_SECONDS
 
     @git_mutex.synchronize { O.git(['fetch', '--quiet', O::REMOTE, O::BASE_BRANCH], chdir: O::ROOT) }
+    @archived = archived_on_base
+    @last_fetch = Time.now
+  end
+
+  # The changes the base branch on origin has archived (integrated).
+  def archived_on_base
     listing = O.git(['ls-tree', '--name-only', "#{O::REMOTE}/#{O::BASE_BRANCH}", 'openspec/changes/archive/'],
                     chdir: O::ROOT).out
-    @archived = listing.lines.map { |l| File.basename(l.strip).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
-    @last_fetch = Time.now
+    listing.lines.map { |l| File.basename(l.strip).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
+  end
+
+  # How this dispatch ended each change, for a dry run run beside it; written only when it changed.
+  def publish_results!
+    view = @results.transform_values(&:to_s)
+    return if view == @published
+
+    O.write_json_atomic(RESULTS_FILE, { 'pid' => Process.pid, 'started_at' => @started_at, 'workers' => @max_workers,
+                                        'results' => view })
+    @published = view
+  end
+
+  # ------------------------------------------------------------------ dry run
+
+  # --dry-run: what the dispatcher would start next and why every other pending item
+  # waits. Read-only (no lock, no lease, no file written), so it also runs beside a
+  # dispatch. With a dispatch running, the free workers start the first ready items;
+  # the items that dispatch already ended (blocked, deferred) wait for the next one.
+  def dry_run_report(out = $stdout)
+    O.git(['fetch', '--quiet', O::REMOTE, O::BASE_BRANCH], chdir: O::ROOT)
+    @archived = archived_on_base
+    backlog = load_backlog(record_seen: false)
+    waited = waited_hours(backlog, record: false)
+    running = running_dispatch
+    building = Dir.glob(File.join(O::LOCK_DIR, '*.lock')).filter_map do |f|
+      name = File.basename(f, '.lock')
+      name unless %w[dispatcher merger].include?(name) || O::Lease.stale?(f)
+    end
+    ready = Dir.glob(File.join(O::READY_DIR, '*.json')).map { |f| File.basename(f, '.json') }
+    by_name = backlog.to_h { |i| [i['change_name'], i] }
+    in_flight_caps = Dir.glob(File.join(O::READY_DIR, '*.json')).flat_map { |f| Array((O.read_json(f) || {})['capabilities']) } +
+                     building.flat_map { |c| claimed(c, by_name[c]) }
+    deferrals = O.read_json(DEFERRALS_FILE) || {}
+    free = running ? [running['workers'].to_i - building.size, 0].max : @max_workers
+    rows = backlog.reject { |i| @archived.include?(i['change_name']) }.map do |item|
+      dry_run_row(item, waited, running, building, ready, in_flight_caps, deferrals, by_name)
+    end
+    rows.select { |r| r['state'] == 'ready' }.each_with_index do |r, n|
+      r['next'] = n < free
+      r['why'] = if O.paused? then 'starts once log/PAUSE is gone'
+                 elsif n < free then running ? 'next: starts as soon as this dispatch looks again' : 'next: starts in the next dispatch'
+                 else 'ready: starts when a worker is free'
+                 end
+    end
+    if @json
+      out.puts JSON.pretty_generate({ 'paused' => O.paused?, 'dispatch' => running, 'free_workers' => free, 'items' => rows })
+    else
+      out.puts dry_run_text(rows, running, building, free)
+    end
+  end
+
+  # The live dispatch ({pid, started_at, workers, results}), or nil.
+  def running_dispatch
+    lock = File.join(O::LOCK_DIR, 'dispatcher.lock')
+    pid = File.exist?(lock) && File.read(lock)[/pid=(\d+)/, 1]
+    return nil unless pid && O::Lease.alive?(pid)
+
+    published = O.read_json(RESULTS_FILE) || {}
+    published = {} unless published['pid'].to_s == pid
+    { 'pid' => pid.to_i, 'started_at' => published['started_at'], 'workers' => published['workers'] || @max_workers,
+      'results' => published['results'] || {} }
+  end
+
+  # The capabilities a change holds or will claim: its planned specs and its locks.
+  def claimed(change, item)
+    wt = File.join(O::WORKTREE_BASE, "worker-#{change}")
+    capabilities(wt, change) + Array(item&.fetch('locks', nil)).map { |l| "lock:#{l}" }
+  end
+
+  def dry_run_row(item, waited, running, building, ready, in_flight_caps, deferrals, by_name)
+    change = item['change_name']
+    hours = waited[change]
+    row = { 'change' => change, 'priority' => item['priority'] || 'normal',
+            'counts_as' => PRIORITY.key(priority_of(item, hours)), 'waited_hours' => hours&.round(1) }
+    state, why =
+      if building.include?(change) then ['building', 'building now']
+      elsif ready.include?(change) then ['merging', 'built: waiting for the merger']
+      elsif O.blocked?(change)
+        file = File.join(O::BLOCKED_DIR, "#{change}.json")
+        record = O.read_json(file) || {}
+        note = O.retry_note(file, record)
+        ['blocked', "blocked: #{record['reason']}#{note ? " (#{note})" : ''}"]
+      elsif (deps = Array(item['depends_on']).reject { |d| @archived.include?(d) }).any?
+        ['waiting', "waits for #{deps.map { |d| "#{d} (#{dependency_state(d, building, ready, by_name)})" }.join(', ')}"]
+      elsif (shared = claimed(change, item) & in_flight_caps).any?
+        ['held', "held: shares #{shared.join(', ')} with a change in flight"]
+      elsif running && running['results'][change]
+        ['next_dispatch', "starts in the next dispatch: this one already ended it (#{running['results'][change]})"]
+      else ['ready', nil]
+      end
+    why = "#{why}; no agent could work on it #{deferrals[change]} time(s) in a row" if why && deferrals[change]
+    row.merge('state' => state, 'why' => why, 'next' => false)
+  end
+
+  def dependency_state(dep, building, ready, by_name)
+    if building.include?(dep) then 'building'
+    elsif ready.include?(dep) then 'built, waiting for the merger'
+    elsif O.blocked?(dep) then 'blocked'
+    elsif by_name.key?(dep) then 'not built yet'
+    else 'not in the backlog'
+    end
+  end
+
+  def dry_run_text(rows, running, building, free)
+    head = if running
+             "dispatch: running (pid #{running['pid']}, #{running['workers']} workers, #{building.size} building, #{free} free)"
+           else
+             "dispatch: not running; the next cycle (or ruby bin/openspec_dispatcher.rb) starts one with #{@max_workers} workers"
+           end
+    lines = [head]
+    if O.paused?
+      reason = File.read(O::PAUSE_FILE).lines.first.to_s.strip
+      lines << "PAUSED (log/PAUSE#{reason.empty? ? '' : ": #{reason}"}): nothing new starts"
+    end
+    return (lines << 'backlog: nothing pending').join("\n") if rows.empty?
+
+    width = rows.map { |r| r['change'].size }.max
+    rows.each_with_index do |r, n|
+      priority = r['counts_as'] == r['priority'] ? r['priority'] : "#{r['priority']}>#{r['counts_as']}"
+      waited = r['waited_hours'] ? format('%.1fh', r['waited_hours']) : '-'
+      lines << format("%2d. %-#{width}s  %-15s %6s  %s", n + 1, r['change'], priority, waited, r['why'])
+    end
+    lines.join("\n")
   end
 
   # Automatic retries: a backlog item quarantined for a reason that can heal on its own
@@ -1143,7 +1279,8 @@ if __FILE__ == $PROGRAM_NAME
     opts.on('--wait [SECONDS]', Integer, 'Wait up to SECONDS (default: dispatch.wait_seconds) while changes wait on merges') do |v|
       options[:wait] = v || OpenSpecDispatcher::DEFAULT_WAIT_TIMEOUT
     end
-    opts.on('--dry-run', 'Print eligible changes and exit') { options[:dry_run] = true }
+    opts.on('--dry-run', 'Print what would start next and why each pending item waits; read-only, also beside a running dispatch') { options[:dry_run] = true }
+    opts.on('--json', 'With --dry-run: the same as JSON') { options[:json] = true }
   end.parse!
   OpenSpecDispatcher.new(**options).run
 end

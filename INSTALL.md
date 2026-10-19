@@ -153,6 +153,10 @@ ruby bin/cycle_progress.rb        # how it is going: now, the last 24 hours, pen
   ruby bin/openspec_dispatcher.rb
   ruby bin/openspec_merger.rb
   ```
+- See what would start next and why each pending item waits, at any time (it only reads, so it also works while a dispatch runs):
+  ```bash
+  ruby bin/openspec_dispatcher.rb --dry-run
+  ```
 - Schedule the hourly cycle (crontab) and the visual QA session (Claude app or Hermes): [SCHEDULING.md](SCHEDULING.md).
 
 ## 9. Upgrade, change agents
