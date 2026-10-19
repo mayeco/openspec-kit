@@ -25,6 +25,8 @@ roles:
 # fallback: every call starts with the first agent of its role, then the next when one
 # fails. random: every call starts with any agent of its role, then the others in the
 # order listed, so the calls spread over the agents' quotas instead of draining the first.
+# spread: like random, but among the agents the fewest running calls use, so changes
+# built at once go to different agents while there are enough of them.
 order: fallback
 # all: agents may run any command (servers, curl, browsers, test tools), except the git
 # commands only the scripts run (commit, push, rebase, reset, checkout, switch).

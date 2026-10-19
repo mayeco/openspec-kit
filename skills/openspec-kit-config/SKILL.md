@@ -27,7 +27,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | The question | The settings |
 | :--- | :--- |
 | Who plans, builds, judges? | `agents.roles.plan`, `.build`, `.cycle`: each a list of agents in order; one that fails is tried again `pipeline.limits.agent_retries` times, then the next one continues its work; the agents themselves: `agents.agents` |
-| Which agent starts? Can the work spread over several quotas? | `agents.order`: `fallback` (always the role's first agent) or `random` (any of them first, then the others in the order listed) |
+| Which agent starts? Can the work spread over several quotas? | `agents.order`: `fallback` (always the role's first agent), `random` (any of them first, then the others in the order listed) or `spread` (like random, among the agents the fewest running calls use, so concurrent changes go to different agents) |
 | What may agents run? | `agents.permissions`: `all`, or `restricted` |
 | How long does a cycle spend, and on what? | `cycle.qa_time_budget_minutes`, `cycle.exploration.minutes`, the strategies of `config/exploration.yaml` and their `order` |
 | How much new work per cycle? | `cycle.exploration.max_new_backlog_items_per_cycle`, `cycle.roadmap.max_new_per_cycle`, `cycle.roadmap.max_open` |

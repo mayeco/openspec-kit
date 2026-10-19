@@ -116,7 +116,8 @@ module KitConfig
     *OpenSpecAgents::ROLES.map { |role, does| setting("agents.roles.#{role}", :agents, 'the first agent CLI on PATH', "#{does}; agents in order; one that fails is tried again limits.agent_retries times, then the next continues its work", ROLE_READERS.fetch(role)) },
     setting('agents.order', :enum, OpenSpecAgents::DEFAULT_ORDER,
             "how each call picks among a role's agents. fallback: the first listed, then the next when one fails; " \
-            "random: any of them first, then the others in the order listed, spreading the calls over the agents' quotas (AGENT_ORDER overrides it for one run)",
+            "random: any of them first, then the others in the order listed, spreading the calls over the agents' quotas; " \
+            'spread: like random, among the agents the fewest running calls use, so changes built at once go to different agents (AGENT_ORDER overrides it for one run)',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::ORDERS),
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
             'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo and omp on their own approval settings, pi without project extensions (hermes, copilot, opencode, cline and crush ignore it)',

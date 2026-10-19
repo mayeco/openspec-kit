@@ -14,9 +14,11 @@
 # skipped at once, and so is one that says it is out of quota or over a usage limit,
 # which a short wait does not lift. An attempt that left changes in the work directory
 # is followed by one told, in its prompt, who stopped and what is there, to continue
-# from that state. With `order: random` in config/agents.yaml (or $AGENT_ORDER) the call
-# starts with any engine of the list, then the others in the order listed: calls spread
-# over the agents' quotas instead of always draining the first one's.
+# from that state. Where a call starts is `order` in config/agents.yaml (or $AGENT_ORDER):
+# fallback with the first engine of the list; random with any of them; spread with one
+# of those the fewest running calls use (bin/lib/agents.rb arrange). Then the others in
+# the order listed. Each call registers the engine it runs in log/agents_in_use/ until
+# it ends, so calls that run at once can avoid sharing an agent.
 # The caller verifies the result as always. Every
 # invocation is bounded by a wall-clock timeout, limits.agent_seconds of
 # config/pipeline.yaml (bin/lib/settings.rb). The exit code is the last engine's
@@ -34,7 +36,8 @@ PROMPT="$(cat "$PROMPT_FILE")"
 SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
 LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
 PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
-ORDER="$(ruby "$(dirname "$0")/lib/agents.rb" order)"   # fallback | random
+AGENTS_RB="$(cd "$(dirname "$0")" && pwd)/lib/agents.rb"   # absolute: this script cds into the work directory
+ORDER="$(ruby "$AGENTS_RB" order)"   # fallback | random | spread
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
@@ -227,27 +230,23 @@ run_engine() { # <engine>
 
 cd "$WORKDIR"
 [ -n "$ENGINES" ] || { echo "agent_exec: no AI engine available (set AGENT_ENGINE)" >&2; exit 127; }
-IFS=',' read -ra LIST <<< "$ENGINES"
-if [ "$ORDER" = random ] && [ "${#LIST[@]}" -gt 1 ]; then
-  # Any engine first, then the others in the order listed.
-  pick=$((RANDOM % ${#LIST[@]}))
-  rest=()
-  for k in "${!LIST[@]}"; do [ "$k" -eq "$pick" ] || rest+=("${LIST[$k]}"); done
-  LIST=("${LIST[$pick]}" "${rest[@]}")
-  echo "agent_exec: order random: $(IFS=,; echo "${LIST[*]}" | tr -d '[:space:]')" >&2
-fi
 RETRIES="$(ruby "$SETTINGS" get limits.agent_retries)"
 RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
 BASE_PROMPT="$PROMPT"
 RUN_PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-prompt.XXXXXX")" # the stub reads its prompt from a file
 ATTEMPT_OUT="$(mktemp "${TMPDIR:-/tmp}/agent-out.XXXXXX")" # one attempt's output, read for a usage limit
-trap 'rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT"' EXIT
+trap 'rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT"; ruby "$AGENTS_RB" release $$ 2>/dev/null' EXIT
+# The engines in the order this call tries them; the first is registered as run by this call.
+ARRANGED="$(ruby "$AGENTS_RB" arrange "$ENGINES" $$)" || ARRANGED="$ENGINES"
+IFS=',' read -ra LIST <<< "$ARRANGED"
+[ "$ORDER" = fallback ] || [ "${#LIST[@]}" -lt 2 ] || echo "agent_exec: order $ORDER: $ARRANGED" >&2
 START="$(tree_state)"
 rc=127
 ran=0
 for i in "${!LIST[@]}"; do
   engine="$(printf '%s' "${LIST[$i]}" | tr -d '[:space:]')"
   [ -n "$engine" ] || continue
+  [ "$i" -eq 0 ] || ruby "$AGENTS_RB" claim "$engine" $$ 2>/dev/null || true # the fallback runs now
   try=0
   while :; do
     printf '%s' "$PROMPT" > "$RUN_PROMPT_FILE"

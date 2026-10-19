@@ -9,15 +9,22 @@
 # them in that order: one that fails (out of quota, not logged in, timed out) is
 # tried again limits.agent_retries times, then the next one runs, told what the
 # failed attempts left so it continues from there. With `order: random` each call
-# starts with any agent of the role instead of the first, then the others in the
-# order listed, so the calls spread over the agents' quotas. Scripts read the
+# starts with any agent of the role instead of the first, and with `order: spread`
+# with one that the fewest running calls use, then the others in the order listed,
+# so the calls spread over the agents' quotas. Every call registers the agent it runs
+# in log/agents_in_use/ until it ends, which is what spread reads. Scripts read the
 # selection here, so a scheduled task never passes it: its prompt is always the
 # same command.
 #
 #   ruby bin/lib/agents.rb engine <plan|build|cycle>   # the engines of a role: claude,hermes
 #   ruby bin/lib/agents.rb list                        # the selected agents
-#   ruby bin/lib/agents.rb order                       # fallback | random
+#   ruby bin/lib/agents.rb order                       # fallback | random | spread
 #   ruby bin/lib/agents.rb permissions                 # all | restricted
+#   ruby bin/lib/agents.rb arrange <list> <pid>        # one call's engines in the order it tries them;
+#                                                      # registers the first as run by <pid>
+#   ruby bin/lib/agents.rb claim <agent> <pid>         # <pid> moved on to <agent>
+#   ruby bin/lib/agents.rb release <pid>               # <pid> ended
+#   ruby bin/lib/agents.rb in-use                      # the agents running calls now: claude 2, pi 1
 #
 # AGENT_ENGINE_PLAN, AGENT_ENGINE_BUILD, AGENT_ENGINE_CYCLE and AGENT_ENGINE
 # (an agent or a comma list) override the selection for one run (tests, a manual
@@ -25,6 +32,7 @@
 # permissions.
 # ==============================================================================
 
+require 'fileutils'
 require 'yaml'
 
 module OpenSpecAgents
@@ -58,9 +66,14 @@ module OpenSpecAgents
   DEFAULT_PERMISSIONS = 'all'
   # fallback: every call starts with a role's first agent, the next running when one
   # fails. random: every call starts with any of them, then the others in the order
-  # listed, so no agent's quota is drained first.
-  ORDERS = %w[fallback random].freeze
+  # listed, so no agent's quota is drained first. spread: every call starts with one
+  # of the agents the fewest running calls use (a free one when there is), drawn at
+  # random among them, then the others in the order listed: calls that run at once go
+  # to different agents while there are enough of them.
+  ORDERS = %w[fallback random spread].freeze
   DEFAULT_ORDER = 'fallback'
+  # One file per running agent_exec.sh call, named by its pid, holding the agent it runs.
+  IN_USE = 'log/agents_in_use'
 
   class Error < StandardError; end
 
@@ -111,6 +124,70 @@ module OpenSpecAgents
     'fallback'
   end
 
+  # The engines of one call, in the order it tries them, for the application's order:
+  # fallback as listed; random any first; spread a random one among those the fewest
+  # running calls use; then the others as listed. With a pid, the first is registered
+  # as run by that call. Picking and registering happen under one lock, so calls that
+  # start at the same moment never take the same free agent.
+  def arrange(root, list, pid = nil, env = ENV)
+    agents = names(list)
+    return agents if agents.empty?
+
+    how = order(root, env)
+    registry(root) do
+      first = case how
+              when 'random' then agents.sample
+              when 'spread'
+                running = in_use(root)
+                fewest = agents.map { |a| running[a] }.min
+                agents.select { |a| running[a] == fewest }.sample
+              else agents.first
+              end
+      write_use(root, pid, first) if pid
+      [first, *(agents - [first])]
+    end
+  end
+
+  # The call <pid> moved on to <agent> (its fallback).
+  def claim(root, agent, pid) = registry(root) { write_use(root, pid, agent) }
+
+  # The call <pid> ended.
+  def release(root, pid)
+    registry(root) { FileUtils.rm_f(File.join(root, IN_USE, pid.to_s)) }
+  end
+
+  # { agent => running calls }. The file of a call whose process is gone (killed before
+  # it could release) is removed and does not count.
+  def in_use(root)
+    Dir.glob(File.join(root, IN_USE, '*')).each_with_object(Hash.new(0)) do |file, running|
+      pid = Integer(File.basename(file), exception: false) or next
+      next FileUtils.rm_f(file) unless alive?(pid)
+
+      agent = (File.read(file).strip rescue '')
+      running[agent] += 1 unless agent.empty?
+    end
+  end
+
+  def alive?(pid)
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  rescue Errno::EPERM
+    true
+  end
+
+  def write_use(root, pid, agent) = File.write(File.join(root, IN_USE, pid.to_s), "#{agent}\n")
+
+  def registry(root)
+    dir = File.join(root, IN_USE)
+    FileUtils.mkdir_p(dir)
+    File.open(File.join(dir, '.lock'), File::RDWR | File::CREAT, 0o644) do |lock|
+      lock.flock(File::LOCK_EX)
+      yield
+    end
+  end
+
   # What agents may do: AGENT_PERMISSIONS, then config/agents.yaml, then all. An
   # unknown value is read as restricted, the safer side.
   def permissions(root, env = ENV)
@@ -158,6 +235,8 @@ module OpenSpecAgents
     lines.push('# fallback: every call starts with the first agent of its role, then the next when one',
                '# fails. random: every call starts with any agent of its role, then the others in the',
                "# order listed, so the calls spread over the agents' quotas instead of draining the first.",
+               '# spread: like random, but among the agents the fewest running calls use, so changes',
+               '# built at once go to different agents while there are enough of them.',
                "order: #{order}",
                '# all: agents may run any command (servers, curl, browsers, test tools), except the git',
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
@@ -177,8 +256,13 @@ if __FILE__ == $PROGRAM_NAME
     in ['list'] then puts((OpenSpecAgents.load(root) || {}).fetch('agents', []).join(' '))
     in ['permissions'] then puts OpenSpecAgents.permissions(root)
     in ['order'] then puts OpenSpecAgents.order(root)
+    in ['arrange', list, pid] then puts OpenSpecAgents.arrange(root, list, Integer(pid)).join(',')
+    in ['claim', agent, pid] then OpenSpecAgents.claim(root, agent, Integer(pid))
+    in ['release', pid] then OpenSpecAgents.release(root, Integer(pid))
+    in ['in-use'] then puts OpenSpecAgents.registry(root) { OpenSpecAgents.in_use(root) }.sort.map { |a, n| n > 1 ? "#{a} #{n}" : a }.join(', ')
     else
-      warn 'Usage: ruby bin/lib/agents.rb engine <plan|build|cycle> | list | order | permissions'
+      warn 'Usage: ruby bin/lib/agents.rb engine <plan|build|cycle> | list | order | permissions | arrange <list> <pid> | ' \
+           'claim <agent> <pid> | release <pid> | in-use'
       exit 2
     end
   rescue OpenSpecAgents::Error => e
