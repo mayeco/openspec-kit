@@ -191,13 +191,18 @@ module OpenSpecOrchestrator
     emit('change.blocked', change: change, reason: error.reason)
   end
 
+  # A rebase that stopped on edits that conflict, as opposed to one git refused to start (a
+  # dirty tree, a missing commit): only the first is something a rebuild can solve.
+  def content_conflict?(output) = output.to_s.match?(/^CONFLICT \(|^error: could not apply/)
+
   # Reasons a quarantine may heal on its own: a flaky gate, an agent that does better on
-  # another try, a judge that was unsure, a base branch or a push that moved meanwhile. The
+  # another try, a judge that was unsure, a base branch or a push that moved meanwhile, a
+  # rebase git refused to start (rebase_failed: a repository busy or out of date). The
   # dispatcher retries them (dispatch.blocked_retries of config/pipeline.yaml). The others
   # wait for a human: a policy violation, a question only a person can answer, a risk to
   # approve, child commits that are gone, and the system reasons, which pause the pipeline.
   RETRYABLE_REASONS = %w[gate_failure incomplete_tasks spec_invalid plan_review scenario_coverage repair_stalled
-                         rebase_conflict push_failed manifest_stale].freeze
+                         rebase_conflict rebase_failed push_failed manifest_stale].freeze
 
   def retry_entries
     entries = read_json(RETRIES_FILE)

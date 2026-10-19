@@ -319,6 +319,8 @@ class OpenSpecMerger
     res = O.git(['rebase', "#{O::REMOTE}/#{base}"], chdir: child)
     unless res.ok?
       O.git(%w[rebase --abort], chdir: child)
+      # A rebase git refused to start is not a conflict: a rebuild would not help.
+      raise O::Blocked.new('rebase_failed', "#{path}: #{res.tail(40)}") unless O.content_conflict?(res.out)
       raise SendBack, "#{path}: #{res.tail(40)}" if rebuild_allowed?(m['change_name'])
 
       raise O::Blocked.new('rebase_conflict', "#{path}: #{res.tail(40)}")

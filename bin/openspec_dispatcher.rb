@@ -381,6 +381,7 @@ class OpenSpecDispatcher
     O.emit('change.start', change: change, worktree: wt)
 
     provision_worktree!(wt, change, branch, log)
+    keep_leftovers!(wt, change, branch, log) # before anything commits, rebases or switches
     if (retried = pending_retry(change))
       Thread.current[:openspec_retry] = retried
       record_retry!(wt, change, retried)
@@ -662,7 +663,7 @@ class OpenSpecDispatcher
     rebase = O.git(['rebase', base_ref], chdir: wt, log: log)
     unless rebase.ok?
       O.git(%w[rebase --abort], chdir: wt)
-      raise O::Blocked.new('rebase_conflict', rebase.out)
+      raise O::Blocked.new(O.content_conflict?(rebase.out) ? 'rebase_conflict' : 'rebase_failed', rebase.out)
     end
     plan!(item, wt, log) # strict validation catches MODIFIED blocks made stale by the rebase
 
@@ -672,17 +673,23 @@ class OpenSpecDispatcher
       target = O.git!(['rev-parse', "HEAD:#{path}"], chdir: wt)
       O.git(['fetch', '--quiet', O::REMOTE], chdir: child, log: log)
       if O.git(['rev-parse', '--verify', '--quiet', "refs/heads/#{branch}"], chdir: child).ok?
-        O.git!(['switch', '--quiet', branch], chdir: child, log: log)
+        child_git!(['switch', '--quiet', branch], child, path, log)
         next if O.git(['merge-base', '--is-ancestor', target, 'HEAD'], chdir: child).ok?
 
         res = O.git(['rebase', target], chdir: child, log: log)
         next if res.ok?
 
         O.git(%w[rebase --abort], chdir: child)
+        # Only edits that conflict are worth a rebuild. git refusing to start (a dirty tree,
+        # a missing commit) is reported as it is, and for this change alone.
+        unless O.content_conflict?(res.out)
+          raise O::Blocked.new('rebase_failed', "#{path}: git rebase #{target} failed without a conflict:\n#{res.tail(20)}")
+        end
+
         rebuilt << rebuild_child!(change, path, child, branch, target, res.out, log)
       else
-        O.git!(['switch', '--quiet', '--detach', target], chdir: child, log: log)
-        O.git!(['switch', '--quiet', '-c', branch], chdir: child, log: log)
+        child_git!(['switch', '--quiet', '--detach', target], child, path, log)
+        child_git!(['switch', '--quiet', '-c', branch], child, path, log)
       end
     end
     return nil if rebuilt.empty?
@@ -707,10 +714,10 @@ class OpenSpecDispatcher
     number += 1 while O.git(['rev-parse', '--verify', '--quiet', "refs/heads/#{branch}-conflict-#{number}"], chdir: child).ok?
     kept = "#{branch}-conflict-#{number}"
     files = conflict.scan(/Merge conflict in (\S+)/).flatten.uniq
-    O.git!(['branch', '-f', kept, branch], chdir: child, log: log)
-    O.git!(['switch', '--quiet', '--detach', target], chdir: child, log: log)
-    O.git!(['branch', '-f', branch, target], chdir: child, log: log)
-    O.git!(['switch', '--quiet', branch], chdir: child, log: log)
+    child_git!(['branch', '-f', kept, branch], child, path, log)
+    child_git!(['switch', '--quiet', '--detach', target], child, path, log)
+    child_git!(['branch', '-f', branch, target], child, path, log)
+    child_git!(['switch', '--quiet', branch], child, path, log)
     O.write_json_atomic(O.rebuild_file(change), record.merge(
       'rebuilds' => count + 1, 'requested' => false,
       'last' => { 'repo' => path, 'files' => files, 'kept' => kept, 'at' => Time.now.utc.iso8601 }
@@ -719,6 +726,40 @@ class OpenSpecDispatcher
     "#{path}: the previous implementation, kept on branch #{kept} of that repository, conflicted with work " \
       "integrated since#{files.empty? ? '' : " in #{files.join(', ')}"}. Implement the tasks again on the current " \
       "code: reuse what still applies (git -C #{path} diff #{target} #{kept}) and keep what the integrated work changed."
+  end
+
+  # Edits left uncommitted in a worktree, by a person who fixed the change while it was
+  # blocked or by an agent call that was killed, are committed as soon as the change
+  # resumes, before PLAN, the rebase onto the base or a rebuild: they are kept under their
+  # own message, and git never refuses to move a dirty tree. In the umbrella,
+  # only the change's folder; in a child repository, only while it is on the change's
+  # branch (anything else is left for the steps that follow to report).
+  def keep_leftovers!(wt, change, branch, log)
+    message = "chore(#{change}): keep edits found uncommitted when the change resumed"
+    kept = []
+    folder = "openspec/changes/#{change}"
+    unless O.git(['status', '--porcelain', '--', folder], chdir: wt).out.strip.empty?
+      commit_umbrella!(wt, message, [folder], log)
+      kept << folder
+    end
+    O.child_paths(wt).each do |path|
+      child = File.join(wt, path)
+      next if O.git(%w[status --porcelain], chdir: child).out.strip.empty?
+      next unless O.git(%w[branch --show-current], chdir: child).out.strip == branch
+
+      commit_child!(child, path, message, log)
+      kept << path
+    end
+    O.emit('change.kept_edits', change: change, paths: kept.join(',')) if kept.any?
+  end
+
+  # A git step on one change's child repository. Its failure is that change's problem
+  # (rebase_failed), never an orchestrator_error that pauses every other change.
+  def child_git!(args, child, path, log)
+    res = O.git(args, chdir: child, log: log)
+    return res.out.strip if res.ok?
+
+    raise O::Blocked.new('rebase_failed', "#{path}: git #{args.join(' ')} failed:\n#{res.tail(20)}")
   end
 
   # The tasks of a rebuilt change are open again, so BUILD implements them instead of finding them done.
@@ -900,10 +941,14 @@ class OpenSpecDispatcher
       child = File.join(wt, path)
       next if O.git(%w[status --porcelain], chdir: child).out.strip.empty?
 
-      O.git!(%w[add -A], chdir: child, log: log)
-      res = O.git(['commit', '--quiet', '-m', "feat(#{change}): implement OpenSpec change #{change}"], chdir: child, log: log)
-      raise O::Blocked.new('gate_failure', "commit hook rejected #{path}:\n#{res.out}") unless res.ok?
+      commit_child!(child, path, "feat(#{change}): implement OpenSpec change #{change}", log)
     end
+  end
+
+  def commit_child!(child, path, message, log)
+    O.git!(%w[add -A], chdir: child, log: log)
+    res = O.git(['commit', '--quiet', '-m', message], chdir: child, log: log)
+    raise O::Blocked.new('gate_failure', "commit hook rejected #{path}:\n#{res.out}") unless res.ok?
   end
 
   def commit_umbrella!(wt, message, paths, log)
