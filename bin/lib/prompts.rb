@@ -29,7 +29,7 @@ module OpenSpecPrompts
       'memory' => 'the lesson files of memory/ (bin/lib/memory.rb), those of the capabilities the change modifies first (empty while there are none)',
       'jev_hint' => 'how to ask Jev a yes/no question (empty without Jev)',
       'authoring_rules' => "the kit's rules for OpenSpec artifacts (config/templates/authoring_rules.md)",
-      'feedback' => 'on a repair round, exactly what failed verification (empty on the first attempt)'
+      'feedback' => 'on a repair round, exactly what failed verification; on the first call after an automatic retry, also what quarantined the change (empty on the first attempt)'
     },
     'build' => {
       'change' => "the change's name",
@@ -37,7 +37,7 @@ module OpenSpecPrompts
       'memory' => 'the lesson files of memory/ (bin/lib/memory.rb), those of the capabilities the change modifies first (empty while there are none)',
       'jev_hint' => 'how to ask Jev a yes/no question (empty without Jev)',
       'authoring_rules' => "the kit's rules for OpenSpec artifacts (config/templates/authoring_rules.md)",
-      'feedback' => 'on a repair round, exactly what failed verification (empty on the first attempt)',
+      'feedback' => 'on a repair round, exactly what failed verification; on the first call after an automatic retry, also what quarantined the change (empty on the first attempt)',
       'rebuild' => 'when the change is rebuilt after a rebase conflict, where the old code is (empty otherwise)'
     },
     # bin/cycle_prompt.rb appends "This cycle" (strategy, dispatch, roadmap, approval) after it.

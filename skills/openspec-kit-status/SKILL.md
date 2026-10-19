@@ -27,7 +27,7 @@ Short, in the person's language, in four blocks:
 2. **Done** in the period: the changes integrated, by name; how many cycles ran and how they ended; visual checks and their verdicts; proposals made, approved, integrated.
 3. **Pending**: the backlog by state, proposals waiting, the visual queue, roadmap progress.
 4. **Needs you**: one line per item, with the command that resolves it:
-   - a blocked change: read its reason; for `risk_review`, review the diff, `touch log/approved/<change>`, then `rm log/blocked/<change>.json`;
+   - a blocked change: read its reason; for `risk_review`, review the diff, `touch log/approved/<change>`, then `rm log/blocked/<change>.json`. One the report shows with an automatic retry still to come (`retry 1 of 1 at <time>`) needs nobody yet: say when it runs again;
    - a proposal waiting: `ruby bin/proposals.rb approve <change>` or `reject <change>`; for a prompt proposal, read it first with `ruby bin/proposals.rb show <change>`;
    - a pause: fix the reason, then `rm log/PAUSE`;
    - a visual check that could not verify: what was missing, from its note.

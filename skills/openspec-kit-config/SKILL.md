@@ -38,6 +38,7 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | Which branch? | `pipeline.base_branch` for the application, `base_branch` in each child repository's `repo.config.yaml` |
 | How many changes at once, and how long may things take? | `pipeline.dispatch.workers`, `pipeline.dispatch.wait_seconds`, `pipeline.limits.agent_seconds`, `.agent_budget_usd`, `.gate_seconds`, `.lease_seconds` |
 | What happens to conflicts and to low items? | `pipeline.dispatch.conflict_rebuilds` (automatic rebuilds on the new base before `rebase_conflict`), `pipeline.dispatch.aging_hours` (one priority up per that many hours waiting) |
+| Is a blocked change tried again? | `pipeline.dispatch.blocked_retries` (automatic retries of a change quarantined for a reason that can heal on its own, such as `gate_failure` or `push_failed`; never `policy_violation`, `spec_ambiguity`, `risk_review`, `missing_child_commits` or a system failure) and `pipeline.dispatch.blocked_retry_hours` (the wait before each). The `BLOCKED` lines of `bash bin/cycle_status.sh` say when the next retry comes, or why none will |
 | What do the agents read? | `config/prompts/plan.md`, `build.md`, `cycle.md`: the prompts, this application's own (`show prompts`) |
 | When does it run? | The schedules (`SCHEDULING.md`), not a setting |
 
@@ -82,3 +83,4 @@ Paths are relative to the application's root, the directory that holds `bin/kit_
 | Shorter cycles | `set cycle.qa_time_budget_minutes 30` |
 | The application works on `main` | `set pipeline.base_branch main` |
 | More changes built at once | `set pipeline.dispatch.workers 3` |
+| Blocked changes wait for a person, as before 2.15.0 | `set pipeline.dispatch.blocked_retries 0` |

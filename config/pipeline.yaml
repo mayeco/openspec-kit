@@ -26,6 +26,15 @@ dispatch:
   # flow of higher ones. Its priority in the backlog does not change. 0: off.
   # OPENSPEC_AGING_HOURS
   aging_hours: 6
+  # A change quarantined for a reason that can heal on its own (gate_failure,
+  # incomplete_tasks, spec_invalid, plan_review, scenario_coverage, repair_stalled,
+  # rebase_conflict, push_failed, manifest_stale) runs again this many times, from its
+  # kept worktree with fresh repair rounds, its first agent call told what stopped it.
+  # Never a policy_violation, spec_ambiguity, risk_review, missing_child_commits or a
+  # system failure: those wait for a human. 0: never. OPENSPEC_BLOCKED_RETRIES
+  blocked_retries: 1
+  # How long a quarantined change waits before that retry. OPENSPEC_BLOCKED_RETRY_HOURS
+  blocked_retry_hours: 1
 
 limits:
   agent_seconds: 7200 # one attempt of an agent (the cycle's judgment: qa_time_budget_minutes + 15); AGENT_TIMEOUT_SECONDS

@@ -30,7 +30,7 @@ The umbrella of the application, built specification first with [OpenSpec](https
 3. `bin/openspec_merger.rb` integrates each finished change: it rebases it, runs the gates again, archives it with `openspec archive` (the only way `openspec/specs/` changes) and pushes.
 4. Every hour the cycle (`bin/run_cycle.sh`) verifies what was integrated, explores the application, queues defects, proposes improvements and roadmap features, and curates `MEMORY.md` and `memory/`. A visual QA session in an agent app tests the application in a browser.
 
-Anything that fails is quarantined in `log/blocked/<change>.json` with a reason, and waits for a person; the rest keeps going.
+Anything that fails is quarantined in `log/blocked/<change>.json` with a reason, and waits for a person; the rest keeps going. A reason that can heal on its own, such as a failing gate or a rejected push, is first retried automatically after a wait (`dispatch.blocked_retries` and `dispatch.blocked_retry_hours` in `config/pipeline.yaml`); `bash bin/cycle_status.sh` says when.
 
 ## 3. Rules for every agent
 

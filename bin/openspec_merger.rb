@@ -118,6 +118,7 @@ class OpenSpecMerger
       integrate_once(m)
       cleanup_worker!(m)
       FileUtils.rm_f([path, O.rebuild_file(change)])
+      O.forget_retries(change)
       update_state('IDLE', 'change' => nil)
     rescue SendBack => e
       send_back!(path, m, e.message)

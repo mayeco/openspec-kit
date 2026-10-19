@@ -15,6 +15,8 @@
 # asked to fix, what the round changed, whether it then passed), the evidence
 # behind the lessons agents leave in handoff.md. Each agent call records the
 # version of its prompt and of the memory it read (bin/prompt_report.rb).
+# A change quarantined for a reason that can heal on its own is retried after a
+# wait, up to a limit (dispatch.blocked_retries, dispatch.blocked_retry_hours).
 # ==============================================================================
 
 require 'optparse'
@@ -37,6 +39,8 @@ class OpenSpecDispatcher
   RETRY_DELAY = OpenSpecSettings.get(O::ROOT, 'limits.agent_retry_delay_seconds')
   CONFLICT_REBUILDS = OpenSpecSettings.get(O::ROOT, 'dispatch.conflict_rebuilds')
   AGING_HOURS = OpenSpecSettings.get(O::ROOT, 'dispatch.aging_hours')
+  BLOCKED_RETRIES = OpenSpecSettings.get(O::ROOT, 'dispatch.blocked_retries')
+  BLOCKED_RETRY_HOURS = OpenSpecSettings.get(O::ROOT, 'dispatch.blocked_retry_hours')
   # When each backlog item was first seen, for aging items that carry no queued_at.
   SEEN_FILE = File.join(O::LOG_DIR, 'backlog_seen.json')
   # agent_exec.sh exits 75 when every engine of a call failed without changing anything
@@ -107,6 +111,7 @@ class OpenSpecDispatcher
       # as soon as a worker is free, instead of waiting for the next dispatch.
       backlog = load_backlog
       by_name = backlog.to_h { |i| [i['change_name'], i] }
+      retry_blocked!(backlog) unless @dry_run || O.paused? || @engines_down
       # A change the merger sent back for a rebuild is started again in this dispatch.
       @results.delete_if { |change, result| result == :ready && (O.read_json(O.rebuild_file(change)) || {})['requested'] }
       pending = backlog.reject { |item| @threads.key?(item['change_name']) || @results.key?(item['change_name']) }
@@ -231,6 +236,61 @@ class OpenSpecDispatcher
     @last_fetch = Time.now
   end
 
+  # Automatic retries: a backlog item quarantined for a reason that can heal on its own
+  # (O::RETRYABLE_REASONS) runs again once it has waited dispatch.blocked_retry_hours, up
+  # to dispatch.blocked_retries times, from its kept worktree with fresh repair rounds and
+  # conflict rebuilds. Its record moves to log/blocked/history/<change>-<n>.json, the retry
+  # is counted in log/blocked_retries.json (the merger forgets the count once it integrates
+  # the change), and the change's next run tells its first agent call what stopped it.
+  # A change still running is left for a later pass: its thread may have just written the record.
+  def retry_blocked!(backlog)
+    return unless BLOCKED_RETRIES.positive?
+
+    backlog.each do |item|
+      change = item['change_name']
+      file = File.join(O::BLOCKED_DIR, "#{change}.json")
+      next if @threads.key?(change) || @archived.include?(change) || !File.exist?(file)
+
+      record = O.read_json(file)
+      due = record.is_a?(Hash) && O.next_retry(file, record, limit: BLOCKED_RETRIES, hours: BLOCKED_RETRY_HOURS)
+      next unless due && due['at'] <= Time.now
+
+      kept = File.join(O::BLOCKED_HISTORY_DIR, "#{change}-#{due['retry']}.json")
+      kept = kept.sub(/\.json\z/, "-#{Time.now.utc.strftime('%Y%m%dT%H%M%S')}.json") if File.exist?(kept)
+      # Counted first: a crash before the record moves loses this retry instead of repeating it forever.
+      O.update_retries do |entries|
+        entries[change] = { 'retries' => due['retry'], 'last' => kept.delete_prefix("#{O::ROOT}/"), 'told' => false,
+                            'retried_at' => Time.now.utc.iso8601 }
+      end
+      FileUtils.mkdir_p(O::BLOCKED_HISTORY_DIR)
+      O.write_json_atomic(kept, record.merge('retried_at' => Time.now.utc.iso8601))
+      FileUtils.rm_f(file)
+      rebuilds = O.read_json(O.rebuild_file(change))
+      if rebuilds.is_a?(Hash) && rebuilds['rebuilds'].to_i.positive?
+        O.write_json_atomic(O.rebuild_file(change), rebuilds.merge('rebuilds' => 0))
+      end
+      @results.delete(change)
+      O.emit('change.retry', change: change, reason: record['reason'], retry: due['retry'], limit: BLOCKED_RETRIES,
+                             record: kept.delete_prefix("#{O::ROOT}/"))
+    end
+  end
+
+  # The record of the retry this run follows, until an agent call has run with it (retry_told!):
+  # a run that was held or deferred before one did passes it on to the next.
+  def pending_retry(change)
+    entry = O.retry_entries[change]
+    return nil unless entry.is_a?(Hash) && entry['told'] == false
+
+    record = O.read_json(File.join(O::ROOT, entry['last'].to_s))
+    record.is_a?(Hash) ? record.merge('retry' => entry['retries'].to_i, 'limit' => BLOCKED_RETRIES) : nil
+  end
+
+  # The first agent call that ran after a retry was told what stopped the change; later ones are not.
+  def retry_told!(change)
+    Thread.current[:openspec_retry] = nil
+    O.update_retries { |entries| entries[change]['told'] = true if entries[change].is_a?(Hash) }
+  end
+
   def eligible?(item)
     change = item['change_name']
     return false if O.blocked?(change) || File.exist?(File.join(O::READY_DIR, "#{change}.json"))
@@ -321,6 +381,10 @@ class OpenSpecDispatcher
     O.emit('change.start', change: change, worktree: wt)
 
     provision_worktree!(wt, change, branch, log)
+    if (retried = pending_retry(change))
+      Thread.current[:openspec_retry] = retried
+      record_retry!(wt, change, retried)
+    end
     plan!(item, wt, log)
     caps = capabilities(wt, change) + Array(item['locks']).map { |l| "lock:#{l}" }
     return :held unless claim_capabilities(change, caps)
@@ -638,7 +702,10 @@ class OpenSpecDispatcher
     count = record['rebuilds'].to_i
     raise O::Blocked.new('rebase_conflict', "#{path}: #{conflict}") if count >= CONFLICT_REBUILDS
 
-    kept = "#{branch}-conflict-#{count + 1}"
+    # A retried change counts its rebuilds from 0 again: never reuse a kept branch.
+    number = count + 1
+    number += 1 while O.git(['rev-parse', '--verify', '--quiet', "refs/heads/#{branch}-conflict-#{number}"], chdir: child).ok?
+    kept = "#{branch}-conflict-#{number}"
     files = conflict.scan(/Merge conflict in (\S+)/).flatten.uniq
     O.git!(['branch', '-f', kept, branch], chdir: child, log: log)
     O.git!(['switch', '--quiet', '--detach', target], chdir: child, log: log)
@@ -878,6 +945,22 @@ class OpenSpecDispatcher
     O.emit('change.repair_unrecorded', change: change, error: e.message) # a lost record never blocks a change
   end
 
+  # Notes in repairs.md, once, that the change was quarantined and is retried automatically, with
+  # what stopped it; completed_since.sh lists it beside the repair rounds.
+  def record_retry!(wt, change, retried)
+    file = File.join(wt, 'openspec', 'changes', change, 'repairs.md')
+    heading = "## retry-#{retried['retry']}, "
+    return if !Dir.exist?(File.dirname(file)) || read_or_empty(file).include?("\n#{heading}")
+
+    entry = +"\n#{heading}#{Time.now.utc.iso8601}, dispatcher\n\n"
+    entry << "Quarantined (#{retried['reason']}) at #{retried['blocked_at']}:\n\n#{fenced(excerpt(retried['details']))}\n"
+    entry << "Result: retried automatically (#{retried['retry']} of #{retried['limit']}).\n"
+    File.write(file, format(REPAIRS_HEADER, change: change)) unless File.exist?(file)
+    File.write(file, entry, mode: 'a')
+  rescue SystemCallError => e
+    O.emit('change.repair_unrecorded', change: change, error: e.message)
+  end
+
   # The end of a verification output, without what looks like a secret.
   def excerpt(text, lines = 40, chars = 4000)
     tail = text.to_s.lines.last(lines).join.strip
@@ -937,6 +1020,7 @@ class OpenSpecDispatcher
     raise EnginesDown, res.tail(20) if res.code == ENGINES_DOWN
 
     clear_deferrals(change)
+    retry_told!(change) if Thread.current[:openspec_retry]
 
     # The agent's only escalation channel: a question a human must answer.
     flag = File.join(wt, 'openspec', 'changes', change, '.needs-human')
@@ -986,9 +1070,14 @@ class OpenSpecDispatcher
                            'rebuild' => rebuild ? "\nThis change is being built again on the current base branch:\n#{rebuild}" : '')
   end
 
-  # A repair round gets exactly what failed verification.
+  # A repair round gets exactly what failed verification. The first agent call of a change
+  # retried from quarantine also gets what stopped it the last time.
   def feedback_block(feedback)
-    feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''
+    block = feedback ? "\nThe previous attempt failed deterministic verification. Fix exactly this:\n```\n#{feedback}\n```" : ''
+    retried = Thread.current[:openspec_retry] or return block
+    "#{block}\nThis change was quarantined (#{retried['reason']}) and is now retried automatically (retry " \
+      "#{retried['retry']} of #{retried['limit']}), from where it stopped. What stopped it:\n" \
+      "#{fenced(excerpt(retried['details'], 80))}Find the cause instead of repeating what the last attempts did."
   end
 end
 

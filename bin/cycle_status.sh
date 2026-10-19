@@ -50,9 +50,13 @@ if [ -f "$ROOT/config/agent_proposals.json" ]; then
     waiting = Array(p).select { |i| i["status"] == "proposed" }.map { |i| i["change_name"] }
     puts "proposals waiting for approval: #{waiting.empty? ? "none" : waiting.join(", ")}"' "$ROOT/config/agent_proposals.json"
 fi
+# Each quarantined change, with its automatic retry (dispatch.blocked_retries of config/pipeline.yaml):
+# when the next one comes, that it used them all, or that its reason needs a person.
 for f in "$LOG"/blocked/*.json; do
   [ -f "$f" ] || continue
-  ruby -rjson -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")); puts "BLOCKED: #{b["change_name"]} reason=#{b["reason"]} since=#{b["blocked_at"]}"' "$f"
+  ruby -r "$ROOT/bin/lib/openspec_orchestrator" -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8"))
+    note = OpenSpecOrchestrator.retry_note(ARGV[0], b)
+    puts "BLOCKED: #{b["change_name"]} reason=#{b["reason"]} since=#{b["blocked_at"]}#{note ? " (#{note})" : ""}"' "$f"
 done
 # Changes whose agents could not work (every engine failed without changing anything):
 # they run again in the next dispatch; the third time in a row is engine_unavailable.

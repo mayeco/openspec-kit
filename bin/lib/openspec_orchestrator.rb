@@ -34,6 +34,10 @@ module OpenSpecOrchestrator
   APPROVED_DIR = File.join(LOG_DIR, 'approved') # operator-written: log/approved/<change> waives risk_review
   WORKER_LOG_DIR = File.join(LOG_DIR, 'workers')
   REBUILD_DIR = File.join(LOG_DIR, 'rebuilds') # <change>.json: automatic rebuilds after a rebase conflict
+  BLOCKED_HISTORY_DIR = File.join(BLOCKED_DIR, 'history') # <change>-<n>.json: the record the n-th automatic retry replaced
+  # change => { retries, last, told }: the automatic retries a quarantined change had, the record
+  # the last one moved to log/blocked/history/, and whether the run that followed was told why.
+  RETRIES_FILE = File.join(LOG_DIR, 'blocked_retries.json')
   # OPENSPEC_SLOT of the merger's integration worktree; the dispatcher's workers take 1, 2, ...
   MERGER_SLOT = 99
   EVENTS_FILE = File.join(LOG_DIR, 'events.jsonl')
@@ -178,12 +182,78 @@ module OpenSpecOrchestrator
 
   def blocked?(change) = File.exist?(File.join(BLOCKED_DIR, "#{change}.json"))
 
+  # The record says how many automatic retries the change already had.
   def quarantine!(change, error, extra = {})
     write_json_atomic(File.join(BLOCKED_DIR, "#{change}.json"), {
       'change_name' => change, 'reason' => error.reason, 'details' => error.details,
-      'blocked_at' => Time.now.utc.iso8601, 'host' => Socket.gethostname
+      'blocked_at' => Time.now.utc.iso8601, 'host' => Socket.gethostname, 'retries' => blocked_retries(change)
     }.merge(extra))
     emit('change.blocked', change: change, reason: error.reason)
+  end
+
+  # Reasons a quarantine may heal on its own: a flaky gate, an agent that does better on
+  # another try, a judge that was unsure, a base branch or a push that moved meanwhile. The
+  # dispatcher retries them (dispatch.blocked_retries of config/pipeline.yaml). The others
+  # wait for a human: a policy violation, a question only a person can answer, a risk to
+  # approve, child commits that are gone, and the system reasons, which pause the pipeline.
+  RETRYABLE_REASONS = %w[gate_failure incomplete_tasks spec_invalid plan_review scenario_coverage repair_stalled
+                         rebase_conflict push_failed manifest_stale].freeze
+
+  def retry_entries
+    entries = read_json(RETRIES_FILE)
+    entries.is_a?(Hash) ? entries : {}
+  end
+
+  def blocked_retries(change)
+    entry = retry_entries[change]
+    entry.is_a?(Hash) ? entry['retries'].to_i : 0
+  end
+
+  # Changes log/blocked_retries.json under a lock: the dispatcher counts a retry, the merger
+  # forgets a change it integrated. Readers need none: every write is an atomic rename.
+  def update_retries
+    File.open("#{RETRIES_FILE}.lock", File::RDWR | File::CREAT, 0o644) do |lock|
+      lock.flock(File::LOCK_EX)
+      entries = retry_entries
+      before = JSON.generate(entries)
+      result = yield entries
+      write_json_atomic(RETRIES_FILE, entries) unless JSON.generate(entries) == before
+      result
+    end
+  end
+
+  # An integrated change has no retries behind it any more (bin/openspec_merger.rb).
+  def forget_retries(change)
+    update_retries { |entries| entries.delete(change) } if retry_entries.key?(change)
+  end
+
+  # The next automatic retry of the change quarantined in `file` (log/blocked/<change>.json):
+  # { 'retry' => its number, 'limit' => dispatch.blocked_retries, 'at' => when it is due },
+  # or nil when none will come: retries are off, its reason needs a human, or it used them all.
+  def next_retry(file, record, limit: OpenSpecSettings.get(ROOT, 'dispatch.blocked_retries'),
+                 hours: OpenSpecSettings.get(ROOT, 'dispatch.blocked_retry_hours'))
+    used = blocked_retries(File.basename(file, '.json'))
+    return nil unless limit.positive? && RETRYABLE_REASONS.include?(record['reason']) && used < limit
+
+    since = begin
+      Time.parse(record['blocked_at'].to_s)
+    rescue ArgumentError
+      File.mtime(file) # a record written by hand
+    end
+    { 'retry' => used + 1, 'limit' => limit, 'at' => since + (hours * 3600) }
+  end
+
+  # What a status line says about a quarantined change's retries; nil while retries are off.
+  def retry_note(file, record, now: Time.now)
+    limit = OpenSpecSettings.get(ROOT, 'dispatch.blocked_retries')
+    return nil unless limit.positive?
+    return 'never retried: needs a person' unless RETRYABLE_REASONS.include?(record['reason'])
+
+    upcoming = next_retry(file, record, limit: limit)
+    return "no retries left: #{blocked_retries(File.basename(file, '.json'))} of #{limit} used" unless upcoming
+
+    when_due = upcoming['at'] <= now ? 'at the next dispatch' : "at #{upcoming['at'].utc.iso8601}"
+    "retry #{upcoming['retry']} of #{limit} #{when_due}"
   end
 
   # { "repos/backend" => "submodule.repos/backend", ... } from .gitmodules.

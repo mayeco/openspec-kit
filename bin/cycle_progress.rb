@@ -23,6 +23,7 @@ require 'optparse'
 require 'time'
 require 'yaml'
 require_relative 'lib/settings'
+require_relative 'lib/openspec_orchestrator'
 
 Encoding.default_external = Encoding::UTF_8
 
@@ -159,7 +160,11 @@ module CycleProgress
     newest = logs.last
     cycles = logs.select { |p| stamp_time(File.basename(p, '.log').delete_prefix('cycle-')) >= since rescue false }
                  .map { |p| cycle_summary(p, p == newest ? now['cycle_judging_pid'] || now['dispatch_pid'] : nil) }
-    blocked = Dir.glob(File.join(LOG, 'blocked', '*.json')).filter_map { |f| read_json(f) }
+    # Each with its automatic retry: when the next one comes, or why none will.
+    blocked = Dir.glob(File.join(LOG, 'blocked', '*.json')).filter_map do |f|
+      b = read_json(f)
+      b.merge('retry' => OpenSpecOrchestrator.retry_note(f, b)) if b.is_a?(Hash)
+    end
     proposals = Array(read_json(File.join(ROOT, 'config', 'agent_proposals.json')))
     backlog = Array(read_json(File.join(ROOT, 'config', 'agent_backlog.json')))
     queue = read_json(File.join(CYCLE, 'visual_queue.json')) || { 'items' => [] }
@@ -227,7 +232,7 @@ module CycleProgress
       },
       'needs_human' => {
         'paused' => now['paused'],
-        'blocked' => blocked.map { |b| b.slice('change_name', 'reason') },
+        'blocked' => blocked.map { |b| b.slice('change_name', 'reason', 'retry') },
         'proposals_waiting' => proposals.count { |p| p['status'] == 'proposed' },
         'visual_cannot_verify' => visual_done.select { |i| i['verdict'] == 'cannot-verify' }.map { |i| i.slice('id', 'change', 'note') }
       }
@@ -278,7 +283,7 @@ module CycleProgress
     n = r['needs_human']
     asks = []
     asks << "remove log/PAUSE once fixed (#{n['paused']})" if n['paused']
-    n['blocked'].each { |b| asks << "#{b['change_name']} is blocked (#{b['reason']})" }
+    n['blocked'].each { |b| asks << "#{b['change_name']} is blocked (#{[b['reason'], b['retry']].compact.join('; ')})" }
     asks << "#{n['proposals_waiting']} proposal(s) waiting for approval" if n['proposals_waiting'].positive?
     n['visual_cannot_verify'].each { |v| asks << "visual check #{v['id']} could not verify #{v['change'] || 'a request'}: #{v['note']}" }
     lines << '== Needs a human'

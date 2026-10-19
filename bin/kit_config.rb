@@ -95,6 +95,11 @@ module KitConfig
     'dispatch.conflict_rebuilds' => ['automatic rebuilds of a change whose code no longer rebases onto the base branch, before rebase_conflict; 0: none',
                                      'bin/openspec_dispatcher.rb, bin/openspec_merger.rb'],
     'dispatch.aging_hours' => ['every this many hours an item waits, it is ordered one priority higher; 0: off', 'bin/openspec_dispatcher.rb'],
+    'dispatch.blocked_retries' => ['automatic retries of a change quarantined for a reason that can heal on its own (a gate failure, a ' \
+                                   'rejected push, a stale manifest...), never of one a human must decide; 0: none',
+                                   'bin/openspec_dispatcher.rb, bin/cycle_status.sh, bin/cycle_progress.rb'],
+    'dispatch.blocked_retry_hours' => ['how long a quarantined change waits before its automatic retry; 0: at the next dispatch',
+                                       'bin/openspec_dispatcher.rb, bin/cycle_status.sh, bin/cycle_progress.rb'],
     'limits.agent_seconds' => ['limit of one agent call', 'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
     'limits.agent_retries' => ['extra attempts with the same agent after a failure, before the next agent of the role (none after a usage limit); 0: none',
                                'bin/agent_exec.sh, bin/openspec_dispatcher.rb'],
