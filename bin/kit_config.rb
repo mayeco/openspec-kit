@@ -64,7 +64,7 @@ module KitConfig
     'jev' => 'the Jev judgment gates; read on every gate'
   }.freeze
   # What the cycle's judgment and the visual session may write (bin/lib/record.sh).
-  SCOPE = %w[MEMORY.md memory config/agent_backlog.json config/agent_proposals.json].freeze
+  SCOPE = %w[MEMORY.md memory config/agent_backlog.json config/agent_history.json config/agent_proposals.json].freeze
   CHANGE_NAME = /\A[a-z0-9][a-z0-9-]{0,62}\z/
   KINDS = %w[defects improvements features].freeze
   MODES = %w[off advisory enforce].freeze
@@ -591,6 +591,8 @@ module KitConfig
     return report[:errors] << 'missing or not valid JSON' if items.nil?
     return report[:errors] << 'must be a JSON list' unless items.is_a?(Array)
 
+    history = read_json(File.join(ROOT, 'config/agent_history.json'))
+    done = history.is_a?(Array) ? history.filter_map { |i| i['change_name'].to_s if i.is_a?(Hash) } : []
     names = items.map { |i| i.is_a?(Hash) ? i['change_name'].to_s : '' }
     items.each_with_index do |item, i|
       name = names[i]
@@ -601,8 +603,21 @@ module KitConfig
       report[:errors] << "#{at}: listed twice" if names.count(name) > 1 && names.index(name) == i
       report[:warnings] << "#{at}: priority #{item['priority'].inspect} is read as normal" unless item['priority'].nil? || PRIORITIES.include?(item['priority'])
       report[:warnings] << "#{at}: no description" if item['description'].to_s.strip.empty?
-      missing = Array(item['depends_on']) - names
+      missing = Array(item['depends_on']) - names - done
       report[:warnings] << "#{at}: depends on #{missing.join(', ')}, not in the backlog (fine if already archived)" if missing.any?
+    end
+  end
+
+  def check_history(report)
+    items = read_json(File.join(ROOT, 'config/agent_history.json'))
+    return report[:errors] << 'missing or not valid JSON' if items.nil?
+    return report[:errors] << 'must be a JSON list' unless items.is_a?(Array)
+
+    items.each_with_index do |item, i|
+      next report[:errors] << "item #{i}: must be an object" unless item.is_a?(Hash)
+
+      at = item['change_name'] || "item #{i}"
+      report[:errors] << "#{at}: change_name must be kebab-case" unless item['change_name'].to_s.match?(CHANGE_NAME)
     end
   end
 
@@ -698,6 +713,7 @@ module KitConfig
       end
     end
     check_backlog(files['config/agent_backlog.json'] = { errors: [], warnings: [] })
+    check_history(files['config/agent_history.json'] = { errors: [], warnings: [] }) if File.exist?(File.join(ROOT, 'config/agent_history.json'))
     check_proposals(files['config/agent_proposals.json'] = { errors: [], warnings: [] })
     files["#{OpenSpecPrompts::DIR}/"] = OpenSpecPrompts.problems(ROOT)
     child_paths.each { |rel| files["#{rel}/repo.config.yaml"] = repo_problems(rel) }

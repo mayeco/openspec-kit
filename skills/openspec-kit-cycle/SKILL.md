@@ -14,9 +14,9 @@ Everything the cycle writes is in English: the report, `state.json` (journal inc
 | Part | Run by | Does |
 | :--- | :--- | :--- |
 | Scheduled task | Claude app, Hermes app or another agent app, with `references/routine-prompt.md` as its prompt | Runs `bash bin/run_cycle.sh --detach`, reports the line it prints, ends. The prompt never changes: the scripts read every setting from `config/` |
-| `bin/run_cycle.sh` | Detached script | Pause switch, cycle lock, preflight, drains the merge queue, syncs the checkout, renders this cycle's prompt (`bin/cycle_prompt.rb`: the next exploration strategy, whether a dispatch is running, the roadmap and approval settings), starts the judgment agent, scope guard, reviews the proposals and applies the approved prompt edits (`bin/proposals.rb`), commits and pushes `MEMORY.md`, `memory/`, the backlog, the proposals and those prompt edits, releases the cycle lock, then runs the dispatcher with a merger beside it unless a dispatch is already running |
-| Judgment agent | The `cycle` role of `config/agents.yaml`, started headless by the script with `log/cycle/prompt-<stamp>.md` (`config/prompts/cycle.md` plus "This cycle") | The judgment procedure below, and nothing else. It has no browser |
-| Visual QA session | A scheduled task of an agent app with a browser, with the `openspec-kit-visual-qa` skill | Checks in the browser what the cycle queued and explores the strategies with `needs: browser`. While it holds `log/visual_qa.lock` the cycle does not judge |
+| `bin/run_cycle.sh` | Detached script | Pause switch, cycle lock, preflight, drains the merge queue, prepares `.worktrees/_cycle` (and syncs the main checkout when no visual session owns it), renders this cycle's prompt (`bin/cycle_prompt.rb`: the next exploration strategy, whether a dispatch is running, the roadmap and approval settings), starts the judgment agent in `.worktrees/_cycle` (`OPENSPEC_SLOT=98`), scope guard, reviews the proposals and applies the approved prompt edits (`bin/proposals.rb`), commits, rebases and pushes `MEMORY.md`, `memory/`, the backlog, the proposals and those prompt edits, releases the cycle lock, then runs the dispatcher with a merger beside it unless a dispatch is already running |
+| Judgment agent | The `cycle` role of `config/agents.yaml`, started headless by the script in `.worktrees/_cycle` with `log/cycle/prompt-<stamp>.md` (`config/prompts/cycle.md` plus "This cycle") | The judgment procedure below, and nothing else. It has no browser |
+| Visual QA session | A scheduled task of an agent app with a browser in `.worktrees/_visual_qa` (`OPENSPEC_SLOT=97`), with the `openspec-kit-visual-qa` skill | Checks in the browser what the cycle queued and explores the strategies with `needs: browser`. Runs in parallel with the cycle's judgment (`log/visual_qa.lock`) and reconciles its findings when it records |
 
 The script owns every step that must not depend on a model remembering it. The judgment agent never commits, pushes, dispatches or merges.
 
@@ -29,6 +29,8 @@ Under `log/cycle/` (git-ignored) and `config/` (versioned):
 | `config/cycle.yaml` | Settings a human edits: QA budget, failure limit, exploration caps, the roadmap, who approves proposals, the application's QA skills. The cycle only reads it |
 | `config/exploration.yaml` | The exploration strategies (slug, name, kind, directive) and their order. The script picks one per cycle |
 | `ROADMAP.md` (`roadmap.file`) | The features to build, in priority order. The cycle proposes the next ones |
+| `config/agent_backlog.json` | The work queue: items to build or blocked. Once integrated, an item moves to `config/agent_history.json` |
+| `config/agent_history.json` | Backlog items that were integrated, with `integrated_at`; moved there by the merger and `bin/proposals.rb` |
 | `config/agent_proposals.json` | Proposals: improvements, missing capabilities and roadmap features waiting for approval, then queued and integrated. The judgment adds them; `bin/proposals.rb` and humans approve them |
 | `log/cycle/state.json` | The cycle's memory between runs. The script creates it from `config/templates/cycle_state.json` on the first cycle |
 | `log/cycle/reports/<stamp>.md` | One report per cycle (`<stamp>` = `YYYYMMDD-HHMM`, UTC), from `references/report.template.md` |

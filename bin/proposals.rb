@@ -12,6 +12,8 @@
 # the prompt edits.
 #
 #   ruby bin/proposals.rb review           # run by run_cycle.sh after the judgment
+#   ruby bin/proposals.rb rebase <base>    # record.sh: the record commit onto origin/<base>, reconciled
+#   ruby bin/proposals.rb carry <checkout> # the checkout's uncommitted scope edits merged into this worktree
 #   ruby bin/proposals.rb list
 #   ruby bin/proposals.rb show <change>     # one proposal; a prompt edit as a diff
 #   ruby bin/proposals.rb approve <change>  # a human approves; the next review queues or applies it
@@ -26,8 +28,9 @@
 #          to ask again.
 #   human  it waits for `approve` or `reject`.
 #   auto   it is approved at once.
-# Every approved proposal is then appended to the backlog ("queued"), and a queued
-# one whose change was archived becomes "integrated".
+# Every approved proposal is then appended to the backlog ("queued"), a queued
+# one whose change was archived becomes "integrated", and any archived item in
+# config/agent_backlog.json moves to config/agent_history.json.
 #
 # A prompt proposal ("kind": "prompt") edits config/prompts/<prompt>.md (plan,
 # build or cycle) instead: a list of "edits", each an "old" text that must occur
@@ -83,7 +86,8 @@ module Proposals
 
   def now = Time.now.utc.iso8601
 
-  def archived?(name) = Dir.glob(File.join(O::ROOT, 'openspec', 'changes', 'archive', "*-#{name}")).any?
+  # Exactly <date>-<name>: a glob on *-<name> took add-mfa's archive for mfa's.
+  def archived?(name) = O.archived_changes.include?(name)
 
   # What Jev needs to judge a proposal: the proposal, the roadmap, and what is
   # already specified, queued or proposed, so that a duplicate is recognizable.
@@ -186,6 +190,7 @@ module Proposals
   def review
     items = read(FILE)
     backlog = read(O::BACKLOG_FILE)
+    history = read(O::HISTORY_FILE)
     mode = approval
     counts = Hash.new(0)
     items.each do |item|
@@ -210,7 +215,9 @@ module Proposals
         end
       end
       if item['status'] == 'approved'
-        unless backlog.any? { |b| b['change_name'] == item['change_name'] }
+        unless backlog.any? { |b| b['change_name'] == item['change_name'] } ||
+               history.any? { |h| h['change_name'] == item['change_name'] } ||
+               archived?(item['change_name'])
           # queued_at lets the dispatcher age the item (dispatch.aging_hours of config/pipeline.yaml).
           backlog << item.reject { |k, _| OWN_FIELDS.include?(k) }.merge('queued_at' => now)
         end
@@ -227,8 +234,164 @@ module Proposals
     end
     write(FILE, items) if File.exist?(FILE) || items.any?
     write(O::BACKLOG_FILE, backlog) if counts['queued'].positive?
+    _, _, moved = O.archive_backlog!(O::ROOT, at: now)
+    counts['archived'] += moved.size if moved.any?
     summary = counts.empty? ? 'nothing to review' : counts.map { |k, v| "#{v} #{k}" }.join(', ')
     puts "proposals: #{summary} (approval: #{mode}, prompt edits: #{prompt_approval})"
+  end
+
+  STATUS_RANK = { 'proposed' => 0, 'approved' => 1, 'queued' => 2, 'integrated' => 3, 'rejected' => 3 }.freeze
+  # What an agent session may write (bin/lib/record.sh SCOPE), what its record
+  # commits (RECORDED: the scope and the prompts), and which of them are JSON lists.
+  SCOPE = %w[MEMORY.md memory config/agent_backlog.json config/agent_history.json config/agent_proposals.json].freeze
+  RECORDED = [*SCOPE, 'config/prompts'].freeze
+  LISTS = %w[config/agent_backlog.json config/agent_history.json config/agent_proposals.json].freeze
+
+  # A file's text at a revision of the repository in `dir`, or nil where it has none.
+  def blob(dir, rev, rel)
+    res = O.git(['show', "#{rev}:#{rel}"], chdir: dir, stderr: :separate)
+    res.ok? ? res.out : nil
+  end
+
+  def text_at(path) = File.file?(path) ? File.read(path, encoding: 'UTF-8') : nil
+
+  def git_names(dir, *args)
+    res = O.git(args, chdir: dir, stderr: :separate)
+    raise "git #{args.first} failed in #{dir}: #{res.err}" unless res.ok?
+
+    res.out.split("\0").reject(&:empty?)
+  end
+
+  def ancestor?(commit, of) = O.git(['merge-base', '--is-ancestor', commit, of], chdir: O::ROOT).ok?
+
+  # Applies what `local` changed since `base` (rel => text, nil for no file) to the
+  # files in O::ROOT, which hold what origin has: a three-way merge that keeps the
+  # changes of both sides, JSON lists item by item and anything else line by line.
+  def reconcile!(base, local)
+    local.each do |rel, text|
+      next if text == base[rel]
+
+      LISTS.include?(rel) ? merge_list!(rel, base[rel], text) : merge_text!(rel, base[rel], text)
+    end
+    O.archive_backlog!(O::ROOT)
+  end
+
+  def merge_text!(rel, base_text, local_text)
+    path = File.join(O::ROOT, rel)
+    remote_text = text_at(path)
+    if local_text.nil?
+      FileUtils.rm_f(path) if remote_text == base_text # deleted here, unchanged there
+      return
+    end
+    FileUtils.mkdir_p(File.dirname(path))
+    return write_text(path, local_text) if remote_text.nil? || remote_text == base_text
+    return if remote_text == local_text
+
+    Dir.mktmpdir('openspec-merge-') do |dir|
+      files = { 'remote' => remote_text, 'base' => base_text.to_s, 'local' => local_text }.map do |name, text|
+        File.join(dir, name).tap { |f| File.write(f, text) }
+      end
+      # --union keeps both sides' lines where they overlap. The output is the file as
+      # it is: never stripped (its last newline) nor mixed with git's stderr.
+      res = O.git(['merge-file', '--union', '-p', *files], chdir: dir, stderr: :separate)
+      raise "git merge-file of #{rel} failed: #{res.err}" unless res.ok?
+
+      write_text(path, res.out)
+    end
+  end
+
+  def list_of(text)
+    return [] if text.nil?
+
+    data = JSON.parse(text)
+    data.is_a?(Hash) ? Array(data['changes']) : (data if data.is_a?(Array))
+  rescue JSON::ParserError
+    nil
+  end
+
+  # A JSON list merged by change_name: what local added, edited or removed since base
+  # is applied to remote, which keeps everything else, including its own edits. Of an
+  # item both sides edited, local's edit wins, or for a proposal the one further along.
+  # Anything that is not a JSON list merges as text.
+  def merge_list!(rel, base_text, local_text)
+    path = File.join(O::ROOT, rel)
+    remote_text = text_at(path)
+    base, local, remote = [base_text, local_text, remote_text].map { |t| list_of(t) }
+    return merge_text!(rel, base_text, local_text) if [base, local, remote].any?(&:nil?)
+
+    key = ->(i) { i.is_a?(Hash) ? i['change_name'] : i }
+    base_by = base.to_h { |i| [key[i], i] }
+    local_keys = local.map { |i| key[i] }
+    merged = remote.reject { |i| base_by.key?(key[i]) && !local_keys.include?(key[i]) }
+    local.each do |item|
+      next if base_by[key[item]] == item # unchanged here: origin's version stands
+
+      at = merged.index { |i| key[i] == key[item] }
+      if at.nil? then merged << item
+      elsif merged[at] != base_by[key[item]] && rel == 'config/agent_proposals.json' then merged[at] = newer_proposal(merged[at], item)
+      else merged[at] = item
+      end
+    end
+    if rel == 'config/agent_proposals.json'
+      merged.each do |item|
+        next unless item.is_a?(Hash) && item['status'] == 'queued' && archived?(item['change_name'])
+
+        item['status'] = 'integrated'
+        item['integrated_at'] ||= now
+      end
+    end
+    write(path, merged) unless merged == remote && remote_text
+  end
+
+  # Of two edits of one proposal the one further along wins (proposed, approved,
+  # queued, then integrated or rejected), and a review once given is kept.
+  def newer_proposal(remote, local)
+    return local unless remote.is_a?(Hash) && local.is_a?(Hash)
+
+    l = STATUS_RANK.fetch(local['status'], 0)
+    r = STATUS_RANK.fetch(remote['status'], 0)
+    l > r || (l == r && local.key?('review') && !remote.key?('review')) ? remote.merge(local) : local.merge(remote)
+  end
+
+  # Rebases the cycle's or visual session's record commit onto origin/<base>,
+  # reconciling the memory, the backlog, the history, the proposals and any
+  # prompt edits with what the merger or the other session pushed meanwhile.
+  # The record is the one commit on top of what origin has; if anything fails the
+  # worktree is put back on it, so a later attempt finds it as it was.
+  def rebase(base)
+    remote = "#{O::REMOTE}/#{base}"
+    raise ArgumentError, "git fetch #{base} failed" unless O.git(['fetch', '--quiet', O::REMOTE, base], chdir: O::ROOT).ok?
+    # The record had nothing left to commit, so nothing of this session's is ahead: catch up.
+    return O.git!(['merge', '--ff-only', '--quiet', remote], chdir: O::ROOT) if ancestor?('HEAD', remote)
+    raise ArgumentError, "HEAD is not one record commit on top of #{remote}; left as it is" unless ancestor?('HEAD~1', remote)
+
+    head = O.git!(%w[rev-parse HEAD], chdir: O::ROOT)
+    message = O.git!(%w[log -1 --format=%B HEAD], chdir: O::ROOT)
+    names = git_names(O::ROOT, 'diff', '--name-only', '-z', 'HEAD~1', 'HEAD', '--', *RECORDED)
+    base_texts = names.to_h { |rel| [rel, blob(O::ROOT, 'HEAD~1', rel)] }
+    local_texts = names.to_h { |rel| [rel, blob(O::ROOT, 'HEAD', rel)] }
+    begin
+      O.git!(['reset', '--hard', '--quiet', remote], chdir: O::ROOT)
+      reconcile!(base_texts, local_texts)
+      stage = RECORDED.select { |f| File.exist?(File.join(O::ROOT, f)) || O.git(['ls-files', '--error-unmatch', '--', f], chdir: O::ROOT).ok? }
+      O.git!(['add', '-A', '--', *stage], chdir: O::ROOT)
+      O.git!(['commit', '--quiet', '-m', message], chdir: O::ROOT) unless O.git(%w[diff --cached --quiet], chdir: O::ROOT).ok?
+    rescue StandardError
+      O.git(['reset', '--hard', '--quiet', head], chdir: O::ROOT)
+      raise
+    end
+  end
+
+  # Applies the uncommitted edits of the scope in `src` (the main checkout: an
+  # operator's `approve`, the visual session's findings) to this worktree, which
+  # holds what origin has, with the three-way merge of `rebase`; `src` is left as
+  # it is. Run from the worktree by bin/run_cycle.sh and bin/visual_qa.sh.
+  def carry(src)
+    src = File.expand_path(src)
+    names = (git_names(src, 'diff', '--name-only', '-z', 'HEAD', '--', *SCOPE) +
+             git_names(src, 'ls-files', '-z', '-o', '--exclude-standard', '--', *SCOPE)).uniq
+    reconcile!(names.to_h { |rel| [rel, blob(src, 'HEAD', rel)] }, names.to_h { |rel| [rel, text_at(File.join(src, rel))] })
+    puts "proposals: carried #{names.join(', ')} from #{src}" if names.any?
   end
 
   def decide(name, status)
@@ -271,12 +434,15 @@ if __FILE__ == $PROGRAM_NAME
   begin
     case ARGV
     in ['review'] then Proposals.review
+    in ['rebase', base] then Proposals.rebase(base)
+    in ['carry', src] then Proposals.carry(src)
     in ['list'] then Proposals.list
     in ['show', name] then Proposals.show(name)
     in ['approve', name] then Proposals.decide(name, 'approved')
     in ['reject', name] then Proposals.decide(name, 'rejected')
     else
-      warn 'Usage: ruby bin/proposals.rb review | list | show <change> | approve <change> | reject <change>'
+      warn 'Usage: ruby bin/proposals.rb review | rebase <base> | carry <checkout> | list | show <change> | ' \
+           'approve <change> | reject <change>'
       exit 2
     end
   rescue ArgumentError, JSON::ParserError => e

@@ -32,6 +32,7 @@ Encoding.default_external = Encoding::UTF_8
 module VisualQA
   ROOT = File.expand_path('..', __dir__)
   QUEUE = File.join(ROOT, 'log', 'cycle', 'visual_queue.json')
+  LOCK_FILE = "#{QUEUE}.lock"
   STRATEGY_STATE = File.join(ROOT, 'log', 'cycle', 'visual_strategy_state.json')
   VERDICTS = %w[verified regression not-visual cannot-verify].freeze
   MAX_PENDING = 50
@@ -57,6 +58,16 @@ module VisualQA
     tmp = "#{QUEUE}.tmp.#{Process.pid}"
     File.write(tmp, "#{JSON.pretty_generate(queue)}\n")
     File.rename(tmp, QUEUE)
+  end
+
+  def with_lock(&block)
+    FileUtils.mkdir_p(File.dirname(LOCK_FILE))
+    File.open(LOCK_FILE, File::RDWR | File::CREAT, 0o644) do |f|
+      f.flock(File::LOCK_EX)
+      block.call
+    ensure
+      f.flock(File::LOCK_UN)
+    end
   end
 
   def add(queue, item)
@@ -225,11 +236,11 @@ if __FILE__ == $PROGRAM_NAME
   args = OptionParser.new { |o| o.on('--change NAME') { |v| change = v } }.parse(ARGV)
   begin
     case args
-    in ['enqueue-integrated'] then VisualQA.enqueue_integrated
-    in ['request', detail] then VisualQA.request(detail, change)
-    in ['take', stamp, plan_file] then VisualQA.take(stamp, File.expand_path(plan_file))
-    in ['done', id, verdict, *note] then VisualQA.done(id, verdict, note.join(' '))
-    in ['release', stamp] then VisualQA.release(stamp)
+    in ['enqueue-integrated'] then VisualQA.with_lock { VisualQA.enqueue_integrated }
+    in ['request', detail] then VisualQA.with_lock { VisualQA.request(detail, change) }
+    in ['take', stamp, plan_file] then VisualQA.with_lock { VisualQA.take(stamp, File.expand_path(plan_file)) }
+    in ['done', id, verdict, *note] then VisualQA.with_lock { VisualQA.done(id, verdict, note.join(' ')) }
+    in ['release', stamp] then VisualQA.with_lock { VisualQA.release(stamp) }
     in ['status'] then VisualQA.status
     else
       warn 'Usage: ruby bin/visual_qa.rb enqueue-integrated | request "<what>" [--change NAME] | ' \

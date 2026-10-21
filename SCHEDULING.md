@@ -196,7 +196,9 @@ OpenCode has no scheduler and no browser of its own. It can run the session from
 | `dispatch: already running` in a cycle's log | An earlier dispatch is still building; this cycle judged and recorded only. Normal |
 | `cycle: paused (<reason>)` | `log/PAUSE` exists: fix the reason, then `rm log/PAUSE` |
 | `preflight: FAIL (...)` | An agent CLI is not logged in, a kit file was edited (`bash bin/install.sh verify`), or a tool is missing |
-| `visual-qa: a cycle is judging` | The visual session starts at its next run. Normal |
+| `visual-qa: session <stamp> is still running` | An earlier visual session is still open; the next run picks up. Normal |
+| `record: not published` in a cycle's or session's log | The record could not be pushed (origin unreachable, or rejected three times). It stays in `.worktrees/_cycle` or `.worktrees/_visual_qa`, and the next cycle or session publishes it first (`published the record an earlier session left`). Normal while it lasts |
+| `could not publish the record an earlier session left ...; kept as refs/openspec/unpublished/<name>` | Even the second attempt failed, so the record was kept under that ref instead of being reset away. Read it with `git show <ref>`, carry what still matters into `MEMORY.md` or the backlog and commit it, then `git update-ref -d <ref>` |
 | `visual-qa: disabled` | `visual_qa.enabled` is not `true` in `config/cycle.yaml` |
 | `scope violation` in `log/PAUSE` | A file besides `MEMORY.md`, `memory/`, the backlog and the proposals was uncommitted while a cycle or visual session ran (often a setting edited by hand): commit it, then `rm log/PAUSE` |
 | `couldn't find remote ref master` in a cycle's log | `base_branch` in `config/pipeline.yaml` is not the application's branch: `ruby bin/kit_config.rb set pipeline.base_branch <branch>`, commit, push |

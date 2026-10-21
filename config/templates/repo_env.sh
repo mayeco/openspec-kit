@@ -74,11 +74,13 @@ openspec_repo_env() {
   fi
 
   # Parallel changes: the dispatcher builds several at once, each in its own worktree,
-  # and the merger tests in another. Each gets OPENSPEC_SLOT (1, 2, ... for the
-  # dispatcher's workers, 99 for the merger; unset in the main checkout) so that two of
-  # them never share a test database or a dev server port. Rails reads TEST_ENV_NUMBER
-  # in config/database.yml (database: app_test<%= ENV['TEST_ENV_NUMBER'] %>), and a
-  # `setup` gate such as "RAILS_ENV=test bin/rails db:prepare" creates that database.
+  # the visual QA session tests in .worktrees/_visual_qa, the cycle judges in
+  # .worktrees/_cycle, and the merger tests in .worktrees/_integration. Each gets
+  # OPENSPEC_SLOT (1, 2, ... for the dispatcher's workers, 97 for visual QA, 98 for the
+  # cycle, 99 for the merger; unset in the main checkout) so that two of them never share
+  # a test database or a dev server port. Rails reads TEST_ENV_NUMBER in
+  # config/database.yml (database: app_test<%= ENV['TEST_ENV_NUMBER'] %>), and a `setup`
+  # gate such as "RAILS_ENV=test bin/rails db:prepare" creates that database.
   # Adapt the names to the stack: DATABASE_URL, PGDATABASE, a pytest --db suffix, ...
   case "${OPENSPEC_SLOT:-}" in
     ''|0|*[!0-9]*) ;;

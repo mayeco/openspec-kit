@@ -28,7 +28,7 @@ require_relative 'lib/prompts'
 class OpenSpecDispatcher
   O = OpenSpecOrchestrator
   PRIORITY = { 'critical' => 0, 'high' => 1, 'normal' => 2, 'low' => 3 }.freeze
-  POLL_SECONDS = 2
+  POLL_SECONDS = 1
   FETCH_EVERY_SECONDS = 30
   # config/pipeline.yaml (bin/lib/settings.rb), read once per run.
   WORKERS = OpenSpecSettings.get(O::ROOT, 'dispatch.workers')
@@ -169,12 +169,25 @@ class OpenSpecDispatcher
     @singleton.flush
   end
 
+  # While a visual QA session owns the main checkout, its uncommitted edits in
+  # config/agent_backlog.json have not passed the scope guard yet; read the
+  # committed backlog from origin/<base> instead, where .worktrees/_cycle pushed.
+  def published_backlog
+    return nil unless @backlog_file == O::BACKLOG_FILE && O.visual_session?
+
+    res = @git_mutex.synchronize { O.git(['show', "#{O::REMOTE}/#{O::BASE_BRANCH}:config/agent_backlog.json"], chdir: O::ROOT) }
+    res.ok? ? res.out : nil
+  end
+
   # The backlog in dispatch order. The file is parsed again only when it changed;
   # one caught mid-write (not valid JSON yet) keeps the last list that parsed.
   def load_backlog(record_seen: true)
-    sig = File.exist?(@backlog_file) ? [File.mtime(@backlog_file).to_f, File.size(@backlog_file)] : nil
+    published = published_backlog
+    sig = if published then [:published, published.hash]
+          elsif File.exist?(@backlog_file) then [File.mtime(@backlog_file).to_f, File.size(@backlog_file)]
+          end
     if sig != @backlog_sig
-      raw = O.read_json(@backlog_file)
+      raw = published ? O.parse_json(published) : O.read_json(@backlog_file)
       if raw.nil? && sig
         report_once('backlog.unreadable', file: @backlog_file)
       else
@@ -235,18 +248,21 @@ class OpenSpecDispatcher
   end
 
   def refresh_remote!(force: false)
-    return if !force && Time.now - @last_fetch < FETCH_EVERY_SECONDS
-
-    @git_mutex.synchronize { O.git(['fetch', '--quiet', O::REMOTE, O::BASE_BRANCH], chdir: O::ROOT) }
+    if force || Time.now - @last_fetch >= FETCH_EVERY_SECONDS
+      @git_mutex.synchronize { O.git(['fetch', '--quiet', O::REMOTE, O::BASE_BRANCH], chdir: O::ROOT) }
+      @last_fetch = Time.now
+    end
     @archived = archived_on_base
-    @last_fetch = Time.now
   end
 
-  # The changes the base branch on origin has archived (integrated).
+  # The changes the base branch on origin has archived (integrated), plus any
+  # already recorded in config/agent_history.json.
   def archived_on_base
     listing = O.git(['ls-tree', '--name-only', "#{O::REMOTE}/#{O::BASE_BRANCH}", 'openspec/changes/archive/'],
                     chdir: O::ROOT).out
-    listing.lines.map { |l| File.basename(l.strip).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
+    from_git = listing.lines.map { |l| File.basename(l.strip).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
+    from_history = O.backlog_items(O::HISTORY_FILE).filter_map { |i| i['change_name'].to_s if i.is_a?(Hash) }
+    (from_git + from_history).uniq
   end
 
   # How this dispatch ended each change, for a dry run run beside it; written only when it changed.
@@ -529,7 +545,7 @@ class OpenSpecDispatcher
     rebuild = refresh!(item, wt, branch, log)
     build!(item, wt, branch, log, rebuild: rebuild)
     assessment = assess_risk!(item, wt, change, caps, log)
-    enqueue!(change, wt, branch, caps, assessment)
+    enqueue!(change, wt, branch, caps, assessment, item)
     :ready
   rescue EnginesDown => e
     return :deferred if deferred?(change, e.message)
@@ -790,18 +806,21 @@ class OpenSpecDispatcher
     # moves from the umbrella branch first; the commits themselves stay safe on
     # feat/spec-<change> inside each child repo and are re-recorded by build!.
     fork = O.git!(['merge-base', 'HEAD', base_ref], chdir: wt)
-    if children.any? && !O.git(['diff', '--quiet', fork, 'HEAD', '--', *children], chdir: wt).ok?
-      O.git!(['reset', '--soft', fork], chdir: wt, log: log)
-      O.git!(['reset', fork, '--', *children], chdir: wt, log: log)
-      commit_umbrella!(wt, "docs(openspec): plan #{change}", ["openspec/changes/#{change}"], log)
-    end
+    specs_moved = !O.git(['diff', '--quiet', fork, base_ref, '--', 'openspec/specs'], chdir: wt).ok?
+    if fork != O.git!(['rev-parse', base_ref], chdir: wt)
+      if children.any? && !O.git(['diff', '--quiet', fork, 'HEAD', '--', *children], chdir: wt).ok?
+        O.git!(['reset', '--soft', fork], chdir: wt, log: log)
+        O.git!(['reset', fork, '--', *children], chdir: wt, log: log)
+        commit_umbrella!(wt, "docs(openspec): plan #{change}", ["openspec/changes/#{change}"], log)
+      end
 
-    rebase = O.git(['rebase', base_ref], chdir: wt, log: log)
-    unless rebase.ok?
-      O.git(%w[rebase --abort], chdir: wt)
-      raise O::Blocked.new(O.content_conflict?(rebase.out) ? 'rebase_conflict' : 'rebase_failed', rebase.out)
+      rebase = O.git(['rebase', base_ref], chdir: wt, log: log)
+      unless rebase.ok?
+        O.git(%w[rebase --abort], chdir: wt)
+        raise O::Blocked.new(O.content_conflict?(rebase.out) ? 'rebase_conflict' : 'rebase_failed', rebase.out)
+      end
+      plan!(item, wt, log) if specs_moved # strict validation catches MODIFIED blocks made stale by the rebase
     end
-    plan!(item, wt, log) # strict validation catches MODIFIED blocks made stale by the rebase
 
     rebuilt = []
     children.each do |path|
@@ -901,7 +920,9 @@ class OpenSpecDispatcher
   # The tasks of a rebuilt change are open again, so BUILD implements them instead of finding them done.
   def reopen_tasks!(wt, change, log)
     tasks = File.join(wt, 'openspec', 'changes', change, 'tasks.md')
-    File.write(tasks, File.read(tasks).gsub(/^(\s*- )\[[xX]\]/, '\1[ ]'))
+    # Under every list marker OpenSpec reads: a checked task left behind would let the
+    # rebuilt branch, without the change's code, pass as already built.
+    File.write(tasks, File.read(tasks).gsub(/^(\s*(?:[-*+]|\d{1,9}[.)])\s+)\[[xX]\]/, '\1[ ]'))
     commit_umbrella!(wt, "docs(openspec): reopen #{change} for a rebuild on the new base", ["openspec/changes/#{change}"], log)
   end
 
@@ -1039,9 +1060,18 @@ class OpenSpecDispatcher
     summary.merge('approved_by_operator' => approved && flagged.any?)
   end
 
-  def tasks_complete?(wt, change)
+  # An unchecked box under any list marker OpenSpec reads (-, *, +, 1., 1)) is
+  # an unfinished task, so `openspec list` is spared; anything else is its call.
+  def task_entry(wt, change)
+    tasks = read_or_empty(File.join(wt, 'openspec', 'changes', change, 'tasks.md'))
+    return nil if tasks.empty? || tasks.match?(/^\s*(?:[-*+]|\d{1,9}[.)])\s+\[ \]/)
+
     listing = O.parse_json(O.run(%w[openspec list --json], chdir: wt).out) || {}
-    entry = Array(listing['changes']).find { |c| c['name'] == change }
+    Array(listing['changes']).find { |c| c['name'] == change }
+  end
+
+  def tasks_complete?(wt, change)
+    entry = task_entry(wt, change)
     entry && entry['totalTasks'].to_i.positive? && entry['completedTasks'] == entry['totalTasks']
   end
 
@@ -1094,12 +1124,12 @@ class OpenSpecDispatcher
     O.git!(['commit', '--quiet', '-m', message], chdir: wt, log: log)
   end
 
-  def enqueue!(change, wt, branch, caps, assessment)
+  def enqueue!(change, wt, branch, caps, assessment, item = nil)
     O.write_json_atomic(File.join(O::READY_DIR, "#{change}.json"), {
       'change_name' => change, 'branch' => branch, 'worktree' => wt,
       'head' => O.git!(%w[rev-parse HEAD], chdir: wt),
       'capabilities' => caps, 'enqueued_at' => Time.now.utc.iso8601,
-      'jev' => assessment
+      'jev' => assessment, 'item' => item
     })
     O.emit('change.ready', change: change, capabilities: caps.join(','))
   end

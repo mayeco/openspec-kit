@@ -39,6 +39,32 @@ if [ "$PUBLISH" -eq 1 ]; then
 fi
 
 echo "== Umbrella"
+git -C "$ROOT" fetch --quiet origin 2>/dev/null || true
+# The merger brings the backlog and history of the main checkout to exactly what it
+# pushed (bin/openspec_merger.rb), and origin may have moved on since. A file that
+# holds a version origin published after HEAD loses nothing when restored to HEAD,
+# so the fast-forward below brings it in.
+BACKLOG_FILES=(config/agent_backlog.json config/agent_history.json)
+published_since_head() { # <file>: succeeds when it holds a version of it in HEAD..@{u}
+  local blob c
+  blob="$(git -C "$ROOT" hash-object -- "$1" 2>/dev/null)" || return 1
+  for c in $(git -C "$ROOT" rev-list 'HEAD..@{u}' -- "$1" 2>/dev/null); do
+    [ "$(git -C "$ROOT" rev-parse -q --verify "$c:$1" 2>/dev/null)" = "$blob" ] && return 0
+  done
+  return 1
+}
+if git -C "$ROOT" merge-base --is-ancestor HEAD '@{u}' 2>/dev/null &&
+   [ -z "$(GIT_OPTIONAL_LOCKS=0 git -C "$ROOT" status --porcelain --ignore-submodules=all -- . "${BACKLOG_FILES[@]/#/:!}")" ]; then
+  dirty=()
+  for f in "${BACKLOG_FILES[@]}"; do
+    [ -n "$(GIT_OPTIONAL_LOCKS=0 git -C "$ROOT" status --porcelain -- "$f")" ] || continue
+    published_since_head "$f" || { dirty=(); break; }
+    dirty+=("$f")
+  done
+  for f in "${dirty[@]+"${dirty[@]}"}"; do
+    git -C "$ROOT" checkout -q HEAD -- "$f" 2>/dev/null || rm -f "$ROOT/$f"
+  done
+fi
 if [ -n "$(GIT_OPTIONAL_LOCKS=0 git -C "$ROOT" status --porcelain --ignore-submodules=all)" ]; then
   echo "  root: local changes present; skipping pull"
   flag "root dirty"

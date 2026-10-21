@@ -38,11 +38,15 @@ module OpenSpecOrchestrator
   # change => { retries, last, told }: the automatic retries a quarantined change had, the record
   # the last one moved to log/blocked/history/, and whether the run that followed was told why.
   RETRIES_FILE = File.join(LOG_DIR, 'blocked_retries.json')
-  # OPENSPEC_SLOT of the merger's integration worktree; the dispatcher's workers take 1, 2, ...
+  # OPENSPEC_SLOT of the visual QA worktree, the cycle's judgment worktree and the
+  # merger's integration worktree; the dispatcher's workers take 1, 2, ...
+  VISUAL_SLOT = 97
+  CYCLE_SLOT = 98
   MERGER_SLOT = 99
   EVENTS_FILE = File.join(LOG_DIR, 'events.jsonl')
   PAUSE_FILE = File.join(LOG_DIR, 'PAUSE')
   BACKLOG_FILE = File.join(ROOT, 'config', 'agent_backlog.json')
+  HISTORY_FILE = File.join(ROOT, 'config', 'agent_history.json')
   AGENT_EXEC = File.join(ROOT, 'bin', 'agent_exec.sh')
   LEASE_TTL_SECONDS = OpenSpecSettings.get(ROOT, 'limits.lease_seconds')
   CHANGE_NAME = /\A[a-z0-9][a-z0-9-]{0,62}\z/
@@ -144,7 +148,7 @@ module OpenSpecOrchestrator
 
   def write_json_atomic(path, obj)
     tmp = "#{path}.tmp.#{Process.pid}.#{Thread.current.object_id}"
-    File.write(tmp, JSON.pretty_generate(obj))
+    File.write(tmp, "#{JSON.pretty_generate(obj)}\n")
     File.rename(tmp, path) # rename(2) is atomic: readers never see a partial manifest
   end
 
@@ -152,6 +156,48 @@ module OpenSpecOrchestrator
     JSON.parse(File.read(path))
   rescue Errno::ENOENT, JSON::ParserError
     nil
+  end
+
+  # A visual QA session holds log/visual_qa.lock while it lives; past its start plus
+  # its time-to-live the lock belongs to a session that died (record.sh visual_session).
+  def visual_session?
+    lock = File.join(LOG_DIR, 'visual_qa.lock')
+    started, ttl = %w[started ttl].map { |f| File.read(File.join(lock, f)).to_i rescue 0 }
+    Dir.exist?(lock) && Time.now.to_i - started < ttl
+  end
+
+  def backlog_items(path)
+    data = read_json(path)
+    data.is_a?(Hash) ? Array(data['changes']) : Array(data)
+  end
+
+  def archived_changes(dir = ROOT)
+    Dir.glob(File.join(dir, 'openspec', 'changes', 'archive', '*')).map do |p|
+      File.basename(p).sub(/\A\d{4}-\d{2}-\d{2}-/, '')
+    end
+  end
+
+  # Moves integrated items out of config/agent_backlog.json and into
+  # config/agent_history.json in `dir`. `item` is the backlog entry the merger
+  # just integrated, in case it was queued only in the local checkout.
+  def archive_backlog!(dir = ROOT, item: nil, archived: archived_changes(dir), at: Time.now.utc.iso8601)
+    backlog_path = File.join(dir, 'config', 'agent_backlog.json')
+    history_path = File.join(dir, 'config', 'agent_history.json')
+    backlog = backlog_items(backlog_path)
+    history = backlog_items(history_path)
+    done, kept = backlog.partition { |i| i.is_a?(Hash) && archived.include?(i['change_name'].to_s) }
+    done << item if item.is_a?(Hash) && item['change_name'].to_s.match?(CHANGE_NAME) && archived.include?(item['change_name'].to_s)
+    added = 0
+    done.each do |entry|
+      name = entry['change_name'].to_s
+      next if history.any? { |h| h.is_a?(Hash) && h['change_name'] == name }
+
+      history << entry.merge('integrated_at' => entry['integrated_at'] || at)
+      added += 1
+    end
+    write_json_atomic(backlog_path, kept) if kept != backlog
+    write_json_atomic(history_path, history) if added.positive?
+    [kept, history, done.filter_map { |i| i['change_name'] }.uniq]
   end
 
   # A CLI's stdout as JSON, or nil when it is not JSON. Unlike `rescue nil`, a

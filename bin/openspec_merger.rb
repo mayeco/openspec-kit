@@ -232,10 +232,16 @@ class OpenSpecMerger
     specs = O.run(%w[openspec validate --specs --strict --json], chdir: wt)
     raise O::Blocked.new('spec_invalid', specs.tail) unless specs.ok?
 
-    # 7. One umbrella commit carrying archive move, canonical specs and pointers.
+    # 7. One umbrella commit carrying archive move, canonical specs, backlog history and pointers.
     update_state('COMMITTING')
     totals = result['archive']['totals'] || {}
-    O.git!(['add', '-A', '--', 'openspec', *touched], chdir: wt)
+    archived_at = Time.now.utc.iso8601
+    O.archive_backlog!(wt, item: m['item'] || { 'change_name' => change }, at: archived_at)
+    stage = ['openspec', *touched]
+    %w[config/agent_backlog.json config/agent_history.json].each do |rel|
+      stage << rel if File.exist?(File.join(wt, rel))
+    end
+    O.git!(['add', '-A', '--', *stage], chdir: wt)
     # The dispatcher's Jev risk assessment, recorded as data. The merger never calls a model.
     jev = m['jev'].is_a?(Hash) ? "\nJev-Assessment: #{m['jev'].map { |k, v| "#{k}=#{v}" }.join(' ')}" : ''
     message = <<~MSG
@@ -259,9 +265,44 @@ class OpenSpecMerger
     res = O.git(['push', '--quiet', O::REMOTE, "HEAD:refs/heads/#{O::BASE_BRANCH}"], chdir: wt)
     raise PushRejected, "umbrella: #{res.tail(5)}" unless res.ok?
 
+    commit = O.git!(%w[rev-parse HEAD], chdir: wt)
+    sync_root_backlog!(m, commit, archived_at)
     update_state('COMPLETED')
-    O.emit('merge.integrated', change: change, commit: O.git!(%w[rev-parse HEAD], chdir: wt),
-                               specs: totals.to_json, repos: touched.join(','))
+    O.emit('merge.integrated', change: change, commit: commit, specs: totals.to_json, repos: touched.join(','))
+  end
+
+  BACKLOG_FILES = %w[config/agent_backlog.json config/agent_history.json].freeze
+
+  # Moves the integrated item out of the main checkout's backlog too, when no cycle
+  # or visual session holds it. Only ever to exactly what `ref` has on origin: a
+  # checkout with edits of its own, or behind origin, would end up with a file that
+  # bin/sync_repos.sh could neither restore nor fast-forward over, so it is left for
+  # that sync instead.
+  def sync_root_backlog!(m, ref, at)
+    return if Dir.exist?(File.join(O::LOG_DIR, 'cycle.lock')) || O.visual_session?
+
+    published = BACKLOG_FILES.to_h do |rel|
+      res = O.git(['show', "#{ref}:#{rel}"], chdir: O::ROOT, stderr: :separate)
+      [rel, res.ok? ? res.out : nil]
+    end
+    archived = O.git(['ls-tree', '--name-only', ref, 'openspec/changes/archive/'], chdir: O::ROOT)
+                .out.lines.map { |l| File.basename(l.strip).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
+    same = Dir.mktmpdir('openspec-backlog-') do |tmp|
+      FileUtils.mkdir_p(File.join(tmp, 'config'))
+      BACKLOG_FILES.each { |rel| FileUtils.cp(File.join(O::ROOT, rel), File.join(tmp, rel)) if File.file?(File.join(O::ROOT, rel)) }
+      O.archive_backlog!(tmp, item: m['item'] || { 'change_name' => m['change_name'] }, archived: archived, at: at)
+      BACKLOG_FILES.all? { |rel| O.read_json(File.join(tmp, rel)) == (published[rel] && O.parse_json(published[rel])) }
+    end
+    return unless same
+
+    BACKLOG_FILES.each do |rel|
+      path = File.join(O::ROOT, rel)
+      next if published[rel].nil? || (File.file?(path) && File.binread(path) == published[rel].b)
+
+      tmp = "#{path}.tmp.#{Process.pid}"
+      File.binwrite(tmp, published[rel])
+      File.rename(tmp, path)
+    end
   end
 
   def already_integrated?(change, base_ref)

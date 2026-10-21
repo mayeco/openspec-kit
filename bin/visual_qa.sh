@@ -12,9 +12,10 @@
 #   end    returns unfinished checks to the queue, applies the scope guard,
 #          reviews proposals, records the memory, the backlog and the proposals,
 #          and releases the lock
-# The agent tests between the two, in its own session. While the session holds
-# the lock the headless cycle does not judge, and a session does not begin while
-# a cycle judges: one agent at a time writes the memory, backlog and proposals.
+# The agent tests between the two, in its own session, isolated in
+# .worktrees/_visual_qa (OPENSPEC_SLOT=97) while the headless cycle judges in
+# .worktrees/_cycle (OPENSPEC_SLOT=98), so the two run in parallel and reconcile
+# the memory, the backlog and the proposals when they record.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,17 +26,21 @@ BASE="$(ruby "$ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.y
 LOG_DIR="$ROOT/log"
 CYCLE_DIR="$LOG_DIR/cycle"
 LOCK="$LOG_DIR/visual_qa.lock"
+WORKTREE_BASE="${OPENSPEC_WORKTREE_BASE:-$ROOT/.worktrees}"
+VISUAL_WT="$WORKTREE_BASE/_visual_qa"
 mkdir -p "$CYCLE_DIR/reports"
 # shellcheck source=lib/record.sh
-. "$ROOT/bin/lib/record.sh"   # SCOPE, scope_guard, record, visual_session
+. "$ROOT/bin/lib/record.sh"   # SCOPE, with_record_lock, scope_guard, record, visual_session
 
 setting() { # <key> <default>: a value of visual_qa in config/cycle.yaml
   ruby -ryaml -e 'v = ((YAML.safe_load_file("config/cycle.yaml") rescue {}) || {}).dig("visual_qa", ARGV[0]); puts(v.nil? ? ARGV[1] : v)' "$1" "$2"
 }
-cycle_judging() { # prints the PID of a cycle that holds log/cycle.lock
-  local pid
-  pid="$(cat "$LOG_DIR/cycle.lock/pid" 2>/dev/null || true)"
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+
+prepare_visual_worktree() {
+  local base_ref
+  git -C "$ROOT" fetch --quiet origin "$BASE" 2>/dev/null || true
+  base_ref="$(git -C "$ROOT" rev-parse --verify --quiet "origin/$BASE" || git -C "$ROOT" rev-parse HEAD)"
+  prepare_session_worktree "$VISUAL_WT" "$base_ref"
 }
 
 case "${1:-}" in
@@ -43,31 +48,55 @@ case "${1:-}" in
     if [ -f "$LOG_DIR/PAUSE" ]; then echo "visual-qa: paused ($(head -1 "$LOG_DIR/PAUSE"))"; exit 0; fi
     if [ "$(setting enabled false)" != true ]; then echo "visual-qa: disabled (visual_qa.enabled in config/cycle.yaml)"; exit 0; fi
     if stamp="$(visual_session)"; then echo "visual-qa: session $stamp is still running"; exit 0; fi
-    # A stale lock (past its time-to-live) belongs to a session that died: its checks go back.
-    if [ -f "$LOCK/stamp" ]; then ruby bin/visual_qa.rb release "$(cat "$LOCK/stamp")" >/dev/null 2>&1; fi
-    rm -rf "$LOCK"
-    mkdir "$LOCK" 2>/dev/null || { echo "visual-qa: another session is starting"; exit 0; }
-    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-    echo "$STAMP" > "$LOCK/stamp"
-    date +%s > "$LOCK/started"
-    echo $(( ($(setting minutes 40) + 30) * 60 )) > "$LOCK/ttl"
-    # The cycle takes its lock first and checks this one later, so backing off here
-    # when a cycle judges leaves exactly one writer.
-    if pid="$(cycle_judging)"; then
+    begin_session() {
+      # Asked again under the lock: a session that began while this one waited is live.
+      if stamp="$(visual_session)"; then echo "visual-qa: session $stamp is still running"; return 0; fi
+      # A stale lock (past its time-to-live) belongs to a session that died: its checks go back.
+      if [ -f "$LOCK/stamp" ]; then ruby bin/visual_qa.rb release "$(cat "$LOCK/stamp")" >/dev/null 2>&1; fi
       rm -rf "$LOCK"
-      echo "visual-qa: a cycle is judging (pid $pid); try at the next run"; exit 0
-    fi
-    bash bin/sync_repos.sh > "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || echo "visual-qa: sync reported a problem (see log/cycle/visual-$STAMP.sync.log)"
-    ruby bin/visual_qa.rb take "$STAMP" "$CYCLE_DIR/visual-$STAMP.md" || { rm -rf "$LOCK"; exit 1; }
+      mkdir "$LOCK" 2>/dev/null || { echo "visual-qa: another session is starting"; return 0; }
+      STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+      echo "$STAMP" > "$LOCK/stamp"
+      echo "$$" > "$LOCK/pid"
+      date +%s > "$LOCK/started"
+      echo $(( ($(setting minutes 40) + 30) * 60 )) > "$LOCK/ttl"
+      bash bin/sync_repos.sh > "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || echo "visual-qa: sync reported a problem (see log/cycle/visual-$STAMP.sync.log)"
+      prepare_visual_worktree >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || { rm -rf "$LOCK"; return 1; }
+      # The plan through the worktree's log/ link, so that take names it relative to the root.
+      ruby "$VISUAL_WT/bin/visual_qa.rb" take "$STAMP" "$VISUAL_WT/log/cycle/visual-$STAMP.md" || { rm -rf "$LOCK"; return 1; }
+    }
+    with_record_lock begin_session || exit 1
     ;;
   end)
     STAMP="$(cat "$LOCK/stamp" 2>/dev/null || true)"
     [ -n "$STAMP" ] || { echo "visual-qa: no session is open"; exit 1; }
     ruby bin/visual_qa.rb release "$STAMP"
-    if ! scope_guard "visual QA $STAMP"; then rm -rf "$LOCK"; exit 1; fi
-    ruby bin/proposals.rb review || echo "visual-qa: proposal review failed; proposals left as they were"
-    record "chore(memory): visual QA $STAMP"
-    rm -rf "$LOCK"
+    if ! scope_guard "visual QA $STAMP" || { [ -d "$VISUAL_WT" ] && ! (cd "$VISUAL_WT" && scope_guard "visual QA $STAMP"); }; then
+      rm -rf "$LOCK"; exit 1
+    fi
+    # The findings were written in the main checkout: carried into .worktrees/_visual_qa
+    # with a three-way merge and recorded from there, the main checkout keeps them until
+    # they are published. Without that worktree they are recorded where they are.
+    end_session() {
+      local target="$ROOT" edits
+      edits="$(scope_edits "$ROOT")"
+      if [ -d "$VISUAL_WT" ]; then
+        target="$VISUAL_WT"
+        if [ -n "$edits" ] && ! (cd "$VISUAL_WT" && ruby bin/proposals.rb carry "$ROOT"); then
+          echo "visual-qa: could not carry the findings into .worktrees/_visual_qa; they stay in the main checkout"
+          target=""
+        fi
+      fi
+      if [ -n "$target" ]; then
+        (cd "$target" && ruby bin/proposals.rb review) || echo "visual-qa: proposal review failed; proposals left as they were"
+        if (cd "$target" && record "chore(memory): visual QA $STAMP") && [ "$target" = "$VISUAL_WT" ]; then
+          release_scope_edits "$edits"
+        fi
+      fi
+      rm -rf "$LOCK"
+      bash bin/sync_repos.sh >/dev/null 2>&1 || true
+    }
+    with_record_lock end_session || { echo "visual-qa: session $STAMP not recorded; run end again"; exit 1; }
     echo "visual-qa: session $STAMP closed"
     ;;
   *)

@@ -13,10 +13,10 @@ Everything it writes is in English.
 
 | Part | Run by | Does |
 | :--- | :--- | :--- |
-| Headless cycle | `bin/run_cycle.sh` | Queues every change the merger integrated (`ruby bin/visual_qa.rb enqueue-integrated`), except the ones that only touch terminal programs (`kind: cli` in their `repo.config.yaml`); its judgment asks for checks only a browser can make (`ruby bin/visual_qa.rb request`); it does not judge while a session holds `log/visual_qa.lock` |
-| `bash bin/visual_qa.sh begin` | This session | Takes the lock (refused while a cycle judges), synchronises the checkout, claims up to `visual_qa.max_items_per_session` queued checks, picks the next strategy with `needs: browser` of `config/exploration.yaml`, writes the plan `log/cycle/visual-<stamp>.md` |
+| Headless cycle | `bin/run_cycle.sh` | Judges in `.worktrees/_cycle` (`OPENSPEC_SLOT=98`), queues every change the merger integrated (`ruby bin/visual_qa.rb enqueue-integrated`), except the ones that only touch terminal programs (`kind: cli` in their `repo.config.yaml`), and asks for checks only a browser can make (`ruby bin/visual_qa.rb request`) |
+| `bash bin/visual_qa.sh begin` | This session | Takes `log/visual_qa.lock` (in parallel with any running cycle), synchronises the checkout, prepares `.worktrees/_visual_qa` (`OPENSPEC_SLOT=97`), claims up to `visual_qa.max_items_per_session` queued checks, picks the next strategy with `needs: browser` of `config/exploration.yaml`, writes the plan `log/cycle/visual-<stamp>.md` |
 | You | The agent app's own browser, desktop and the application's QA skills (`qa.skills`) | The procedure below |
-| `bash bin/visual_qa.sh end` | This session | Returns the checks you did not close to the queue, applies the scope guard, reviews proposals, commits and pushes `MEMORY.md`, `memory/`, the backlog and the proposals, releases the lock |
+| `bash bin/visual_qa.sh end` | This session | Returns the checks you did not close to the queue, applies the scope guard, reviews proposals, commits, rebases and pushes `MEMORY.md`, `memory/`, the backlog and the proposals (reconciling with anything the cycle or the merger pushed meanwhile), releases the lock |
 
 ## Hard rules
 
@@ -32,7 +32,7 @@ Everything it writes is in English.
 ### 1. Start the application
 
 - Read the plan, `MEMORY.md` and `config/cycle.yaml` (`qa.skills`).
-- Start each repository's application that the checks need with its dev command, through its environment: `bash bin/repo_exec.sh repos/<name> <service.dev_command>` (see its `repo.config.yaml`). Wait for `service.health_endpoint`. Use the application's QA skills to seed data and sign in when it has them.
+- Start each repository's application that the checks need with its dev command, through its environment: `bash bin/repo_exec.sh repos/<name> <service.dev_command>` (see its `repo.config.yaml`). It runs from `.worktrees/_visual_qa` on `OPENSPEC_SLOT` 97, where the repository's `env_script` may give it another port than `service.port`: read it with `bash bin/repo_exec.sh repos/<name> printenv PORT` and, when it prints one, use that port in place of the one in `service.health_endpoint` and in every URL you open. Wait for the health endpoint. Use the application's QA skills to seed data and sign in when it has them.
 
 ### 2. Check the queued items
 

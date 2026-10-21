@@ -20,6 +20,16 @@ REPO="${1:?usage: repo_exec.sh <repo> <command> [args...]}"
 shift
 [ $# -gt 0 ] || { echo "usage: repo_exec.sh <repo> <command> [args...]" >&2; exit 2; }
 
+# A visual QA session runs in .worktrees/_visual_qa on slot 97, so its dev server
+# and database never collide with the main checkout or the cycle's judgment (slot 98).
+# Only while it lives: a lock past its start plus its time-to-live is a dead session's.
+VISUAL_LOCK="$ROOT/log/visual_qa.lock"
+if [ -z "${OPENSPEC_SLOT:-}" ] && [ -d "$VISUAL_LOCK" ] &&
+   [ $(( $(date +%s) - $(cat "$VISUAL_LOCK/started" 2>/dev/null || echo 0) )) -lt "$(cat "$VISUAL_LOCK/ttl" 2>/dev/null || echo 0)" ]; then
+  export OPENSPEC_SLOT="${OPENSPEC_VISUAL_SLOT:-97}"
+  [ -d "${OPENSPEC_WORKTREE_BASE:-$ROOT/.worktrees}/_visual_qa" ] && ROOT="${OPENSPEC_WORKTREE_BASE:-$ROOT/.worktrees}/_visual_qa"
+fi
+
 case "$REPO" in
   /*) DIR="$REPO" ;;
   */*) DIR="$ROOT/$REPO" ;;

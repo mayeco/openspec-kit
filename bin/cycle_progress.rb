@@ -89,8 +89,7 @@ module CycleProgress
               elsif text.include?('preflight: FAIL') then 'preflight failed'
               elsif text.match?(/^cycle: paused/) then 'paused'
               elsif text.include?('== done')
-                if text.include?('this cycle does not judge') then 'dispatched only (visual QA session running)'
-                elsif text.include?('dispatch: already running') then 'judged; an earlier dispatch was still running'
+                if text.include?('dispatch: already running') then 'judged; an earlier dispatch was still running'
                 else 'done'
                 end
               elsif running_pid then "running (#{text.scan(/^== (\S+)/).flatten.last || 'starting'})"

@@ -47,6 +47,7 @@ xyz/
 │   ├── exploration.yaml     the exploration strategies the cycle rotates through
 │   ├── jev_policy.yaml      the Jev gates and thresholds
 │   ├── agent_backlog.json   the work queue
+│   ├── agent_history.json   backlog items that were integrated
 │   └── agent_proposals.json proposals waiting for approval
 ├── .agents/skills/          the kit's skills and OpenSpec's, for every agent
 ├── .claude/skills/ ...      a copy for each other selected agent
