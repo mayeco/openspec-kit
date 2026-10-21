@@ -15,7 +15,7 @@ base_branch: master # OPENSPEC_BASE_BRANCH
 dispatch:
   workers: 2 # changes one dispatch builds in parallel; OPENSPEC_WORKERS
   wait_seconds: 3600 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
-  merge_interval_seconds: 10 # how often a watching merger looks for ready changes; OPENSPEC_MERGE_INTERVAL
+  merge_interval_seconds: 10 # how often a watching merger looks for ready changes, and an idle dispatcher fetches origin; OPENSPEC_MERGE_INTERVAL
   # A change whose code no longer rebases onto the base branch (another change edited
   # the same lines first) is rebuilt on the new base this many times before it waits
   # for a human as rebase_conflict. While a rebuild runs, another change may merge into

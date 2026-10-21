@@ -53,17 +53,34 @@ scope_guard() { # <who>
   return 1
 }
 
+# Keeps a commit under refs/openspec/unpublished/<worktree>-<stamp>-<commit>, where
+# no reset of the worktree can reach it, and says so.
+keep_unpublished() { # <dir> <commit> <why>
+  local keep
+  keep="refs/openspec/unpublished/$(basename "$1")-$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$1" rev-parse --short "$2")"
+  git -C "$1" update-ref "$keep" "$2" && echo "$3; kept as $keep"
+}
+
 # Commits the recorded paths that changed and publishes them on the base branch.
 # Fails when the commit could not be published: it stays in the worktree, and the
-# next prepare_session_worktree there publishes it before anything is reset.
+# next prepare_session_worktree there publishes it before anything is reset. A
+# commit git refuses (an index.lock a git that died left behind) is built through
+# a temporary index instead and kept under refs/openspec/unpublished/.
 record() { # <commit message>
   [ -n "$(git status --porcelain -- "${RECORDED[@]}")" ] || { echo "record: nothing to record"; return 0; }
   # git add aborts on a pathspec that matches nothing: stage existing or tracked paths only.
-  local stage=() p attempt pushed=1
+  local stage=() p attempt pushed=1 index tree commit
   for p in "${RECORDED[@]}"; do
     if [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then stage+=("$p"); fi
   done
-  git add -A -- "${stage[@]}" && git commit --quiet -m "$1" || return 1
+  if ! { git add -A -- "${stage[@]}" && git commit --quiet -m "$1"; }; then
+    index="$(mktemp -d)"
+    GIT_INDEX_FILE="$index/index" git read-tree HEAD && GIT_INDEX_FILE="$index/index" git add -A -- "${stage[@]}" &&
+      tree="$(GIT_INDEX_FILE="$index/index" git write-tree)" && commit="$(git commit-tree "$tree" -p HEAD -m "$1")" &&
+      keep_unpublished "$(pwd)" "$commit" "record: git refused the commit"
+    rm -rf "$index"
+    return 1
+  fi
   for attempt in 1 2 3; do
     # The merger or the other session may have pushed meanwhile; reconcile on rebase.
     git push --quiet origin "HEAD:$BASE" && { pushed=0; break; }
@@ -99,21 +116,24 @@ release_scope_edits() { # <scope_edits of the main checkout before the carry>
 
 # A record its session could not publish is the one commit on top of what origin
 # has; it is published before its worktree is reset, or kept under
-# refs/openspec/unpublished/ when that fails too, so a reset never loses it.
-# Succeeds only when it published one: its worktree's HEAD is then the new base.
+# refs/openspec/unpublished/ when that fails too, so a reset never loses it. So is
+# one whose base origin no longer has (a rewritten history): there is nothing to
+# rebase it onto. Succeeds only when it published one: its worktree's HEAD is
+# then the new base.
 publish_leftover_record() { # <worktree> <base-ref>
-  local wt="$1" ref="$2" keep
+  local wt="$1" ref="$2"
   git -C "$wt" rev-parse -q --verify HEAD~1 >/dev/null || return 1
   git -C "$wt" merge-base --is-ancestor HEAD "$ref" && return 1
-  git -C "$wt" merge-base --is-ancestor HEAD~1 "$ref" || return 1
   case "$(git -C "$wt" log -1 --format=%s)" in "chore(memory): "*) ;; *) return 1 ;; esac
+  if ! git -C "$wt" merge-base --is-ancestor HEAD~1 "$ref"; then
+    keep_unpublished "$wt" HEAD "the record an earlier session left in $wt sits on a base origin no longer has"
+    return 1
+  fi
   if (cd "$wt" && { git push --quiet origin "HEAD:$BASE" || { ruby bin/proposals.rb rebase "$BASE" && git push --quiet origin "HEAD:$BASE"; }; }); then
     echo "published the record an earlier session left in $wt"
     return 0
   fi
-  keep="refs/openspec/unpublished/$(basename "$wt")-$(date -u +%Y%m%dT%H%M%SZ)"
-  git -C "$wt" update-ref "$keep" HEAD
-  echo "could not publish the record an earlier session left in $wt; kept as $keep"
+  keep_unpublished "$wt" HEAD "could not publish the record an earlier session left in $wt"
   return 1
 }
 
@@ -126,6 +146,12 @@ prepare_session_worktree() { # <worktree> <base-ref>
   local wt="$1" ref="$2" exclude="$ROOT/.git/info/exclude"
   mkdir -p "$(dirname "$wt")" "$(dirname "$exclude")"
   if [ -d "$wt" ] && [ "$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null)" = "$(cd "$wt" && pwd -P)" ]; then
+    # The worktree is this session's alone and is prepared under its locks: an index.lock
+    # (its own or a child repository's) no git touched for 10 minutes was left by one that
+    # died, and would refuse every command below. A younger one stays, and stops this.
+    find "$(git -C "$wt" rev-parse --absolute-git-dir)" -name index.lock -mmin +10 2>/dev/null | while IFS= read -r lock; do
+      rm -f "$lock" && echo "removed $lock, which no git had touched for 10 minutes"
+    done
     if publish_leftover_record "$wt" "$ref"; then ref="$(git -C "$wt" rev-parse HEAD)"; fi
   else
     rm -rf "$wt"

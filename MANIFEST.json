@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.18.0",
-  "source_commit": "3c324d5012885c657c9711a48517c202b9980106",
+  "version": "2.18.1",
+  "source_commit": "34062f82a7dcda241e3b934fa049e7546191c03a",
   "source_dirty": false,
-  "built_at": "2026-10-21T05:38:59Z",
+  "built_at": "2026-10-21T12:19:11Z",
   "toolchain": {
     "openspec": "1.14.3",
     "git": "2.56.0",
@@ -42,7 +42,7 @@
     },
     "SCHEDULING.md": {
       "class": "kit",
-      "sha256": "ec4a54cf97ef3a684694a5c319217cdd175fa581a619d4b795d46968a36fa9b6"
+      "sha256": "e6039cbdb93d68362c333c4dd5eb1bac8e23aa2010824868cca1dabc8cde65a3"
     },
     "bin/agent_exec.sh": {
       "class": "kit",
@@ -86,7 +86,7 @@
     },
     "bin/kit_config.rb": {
       "class": "kit",
-      "sha256": "689decb602bb2322a1b608a4d93f95d27589891ad406cef763908248d8e0c2ce"
+      "sha256": "812f4148c4fcfba6e91f9b31cd5f46394da5509f5c35d8fa4acfd7b924fdaca4"
     },
     "bin/lib/agents.rb": {
       "class": "kit",
@@ -106,7 +106,7 @@
     },
     "bin/lib/record.sh": {
       "class": "kit",
-      "sha256": "87f82ceec75ef2b1dc4b509a4c177f3e741b8636d17899932112788fa6e8cb87"
+      "sha256": "1df42a9f8aab1b1af6f8194383c73356d2382cbcaaf71ee1944cbbe16bc7152a"
     },
     "bin/lib/settings.rb": {
       "class": "kit",
@@ -114,7 +114,7 @@
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "55bc0593ca58afed30e5f98b6963be65483b5ab07f2c0ab23b87ce08781ce383"
+      "sha256": "5769e9f1fa823e0f1bcf83bace5c699284c00d1012ea599ccec828b17f01c7d0"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
@@ -186,7 +186,7 @@
     },
     "config/pipeline.yaml": {
       "class": "seed",
-      "sha256": "471f4523d6e9bd019a726c22e59db4ff1c9a8aa1c1e2090bfb3bc57982cf85ea"
+      "sha256": "19033e3399521bc4822c91534d1084e4cd525f7c13dd4497cd038bca563c6686"
     },
     "config/prompts/build.md": {
       "class": "seed",

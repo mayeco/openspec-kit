@@ -28,10 +28,13 @@ require_relative 'lib/prompts'
 class OpenSpecDispatcher
   O = OpenSpecOrchestrator
   PRIORITY = { 'critical' => 0, 'high' => 1, 'normal' => 2, 'low' => 3 }.freeze
-  POLL_SECONDS = 1
+  POLL_SECONDS = 2
   FETCH_EVERY_SECONDS = 30
   # config/pipeline.yaml (bin/lib/settings.rb), read once per run.
   WORKERS = OpenSpecSettings.get(O::ROOT, 'dispatch.workers')
+  # With no worker running, origin is fetched this often, not on every pass: a merge
+  # cannot land sooner than the merger looks for ready changes.
+  IDLE_FETCH_SECONDS = OpenSpecSettings.get(O::ROOT, 'dispatch.merge_interval_seconds')
   DEFAULT_WAIT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'dispatch.wait_seconds')
   GATE_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.gate_seconds')
   AGENT_TIMEOUT = OpenSpecSettings.get(O::ROOT, 'limits.agent_seconds')
@@ -115,7 +118,7 @@ class OpenSpecDispatcher
 
     loop do
       reap!
-      refresh_remote!(force: @threads.empty?)
+      refresh_remote!(idle: @threads.empty?)
       # Read again on every pass: what a cycle queues while this dispatch runs starts
       # as soon as a worker is free, instead of waiting for the next dispatch.
       backlog = load_backlog
@@ -247,8 +250,10 @@ class OpenSpecDispatcher
     end
   end
 
-  def refresh_remote!(force: false)
-    if force || Time.now - @last_fetch >= FETCH_EVERY_SECONDS
+  # Fetches origin every FETCH_EVERY_SECONDS while workers build, every
+  # IDLE_FETCH_SECONDS while none does (the first pass always fetches).
+  def refresh_remote!(idle: false)
+    if Time.now - @last_fetch >= (idle ? IDLE_FETCH_SECONDS : FETCH_EVERY_SECONDS)
       @git_mutex.synchronize { O.git(['fetch', '--quiet', O::REMOTE, O::BASE_BRANCH], chdir: O::ROOT) }
       @last_fetch = Time.now
     end
