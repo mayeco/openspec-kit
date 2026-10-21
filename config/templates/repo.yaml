@@ -20,6 +20,18 @@ service:
   dev_command: "{{DEV_COMMAND}}"         # e.g. "pnpm dev", "go run ./cmd/server", "go run ./cmd/mytool"
   port: "{{DEV_PORT}}"                   # quoted: an unquoted {{...}} is invalid YAML
   health_endpoint: "{{HEALTH_ENDPOINT}}" # e.g. "http://localhost:3000/up"
+  # The visual QA session runs the application from .worktrees/_visual_qa, a clone without
+  # untracked files: bin/visual_qa.sh begin runs this there first, on the session's slot,
+  # with OPENSPEC_MAIN_ROOT set to the main checkout. A failure stops the session before it
+  # takes any check. e.g. "pnpm install --frozen-lockfile", or "ln -sf
+  # $OPENSPEC_MAIN_ROOT/repos/core/config/application.yml config/ && bin/rails db:prepare"
+  prepare: ""
+
+# What its gates need running (a database, a search engine), as name: command. The preflight
+# runs each through env_script, with 30 seconds to answer, before a cycle judges or dispatches,
+# and the visual session before it begins: one that fails stops them with its name, and the
+# next run checks again. e.g. postgres: "pg_isready -h localhost -p 5432"
+requires: {}
 
 # Run in this order when this repo has changes: setup, lint, typecheck, test, build, then any
 # extra keys. They run after every BUILD and again at merge, so keep them fast: each command
@@ -39,3 +51,8 @@ gates:
 # cycle instead of the gates, after gates.setup: usually the full suite. Empty: the gates.
 regression:
   test: "{{REGRESSION_COMMAND}}"         # e.g. "bundle exec rspec", "pnpm test", "pytest"
+
+# Paths whose change runs the regression too, after the gates, at every BUILD and at merge: a
+# change there can break what no related test covers (a validation, a boot default, a
+# migration). Globs relative to this repository; ** matches any depth. Empty: never.
+regression_when: []                      # e.g. ["app/models/**", "config/initializers/**", "db/migrate/**"]

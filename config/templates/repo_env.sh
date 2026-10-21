@@ -76,7 +76,7 @@ openspec_repo_env() {
   # Parallel changes: the dispatcher builds several at once, each in its own worktree,
   # the visual QA session tests in .worktrees/_visual_qa, the cycle judges in
   # .worktrees/_cycle, and the merger tests in .worktrees/_integration. Each gets
-  # OPENSPEC_SLOT (1, 2, ... for the dispatcher's workers, 97 for visual QA, 98 for the
+  # OPENSPEC_SLOT (1, 2, ... for the dispatcher's workers, visual_qa.slot for visual QA, 98 for the
   # cycle, 99 for the merger; unset in the main checkout) so that two of them never share
   # a test database or a dev server port. Rails reads TEST_ENV_NUMBER in
   # config/database.yml (database: app_test<%= ENV['TEST_ENV_NUMBER'] %>), and a `setup`

@@ -38,9 +38,8 @@ module OpenSpecOrchestrator
   # change => { retries, last, told }: the automatic retries a quarantined change had, the record
   # the last one moved to log/blocked/history/, and whether the run that followed was told why.
   RETRIES_FILE = File.join(LOG_DIR, 'blocked_retries.json')
-  # OPENSPEC_SLOT of the visual QA worktree, the cycle's judgment worktree and the
-  # merger's integration worktree; the dispatcher's workers take 1, 2, ...
-  VISUAL_SLOT = 97
+  # OPENSPEC_SLOT of the cycle's judgment worktree and the merger's integration
+  # worktree; the dispatcher's workers take 1, 2, ..., the visual session visual_qa.slot.
   CYCLE_SLOT = 98
   MERGER_SLOT = 99
   EVENTS_FILE = File.join(LOG_DIR, 'events.jsonl')
@@ -157,6 +156,11 @@ module OpenSpecOrchestrator
   rescue Errno::ENOENT, JSON::ParserError
     nil
   end
+
+  # A change's scratch directory, outside its worktree: its agents get it as TMPDIR, so
+  # a log they keep never lands where verification takes it for a write outside the
+  # change. The merger removes it with the worktree.
+  def scratch_dir(change) = File.join(LOG_DIR, 'tmp', change)
 
   # A visual QA session holds log/visual_qa.lock while it lives; past its start plus
   # its time-to-live the lock belongs to a session that died (record.sh visual_session).

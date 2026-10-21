@@ -48,6 +48,11 @@ visual_qa:
   enabled: true
   minutes: 40 # time budget of one session
   max_items_per_session: 5 # queued checks one session takes; the rest wait
+  # The OPENSPEC_SLOT of the session's commands, which run in .worktrees/_visual_qa (what is on
+  # origin). Empty: none, so the ports and databases of the main checkout, and the browser's
+  # approvals for them. A number (97 is free) gives the session its own ports and databases, as
+  # each repository's env_script derives them; its service.prepare readies them.
+  slot:
 
 memory:
   # MEMORY.md holds what applies to every change, and every agent reads it on every

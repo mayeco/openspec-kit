@@ -34,6 +34,7 @@ If the requirements contradict each other in a way that affects data integrity o
 question to openspec/changes/{{change}}/.needs-human and stop: a human will answer it.
 {{jev_hint}}
 {{authoring_rules}}
-Hard rules: never edit openspec/specs/ or anything outside openspec/changes/{{change}}/;
+Hard rules: never edit openspec/specs/ or anything outside openspec/changes/{{change}}/ (keep logs and
+scratch files under `$TMPDIR`, this change's own directory outside the worktree);
 never commit, push, reset or switch branches.
 {{feedback}}

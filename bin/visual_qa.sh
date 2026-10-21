@@ -7,13 +7,16 @@
 # The headless cycle (bin/run_cycle.sh, under crontab or any scheduler) cannot
 # use a browser. A scheduled task of an agent app that can (Claude, Hermes) runs
 # this session with the fixed prompt of the openspec-kit-visual-qa skill:
-#   begin  takes log/visual_qa.lock, synchronises the checkout, claims the queued
-#          checks (bin/visual_qa.rb) and writes the session's plan; prints one line
+#   begin  takes log/visual_qa.lock, synchronises the checkout, prepares
+#          .worktrees/_visual_qa, checks the services the repositories require and
+#          runs their service.prepare, claims the queued checks (bin/visual_qa.rb)
+#          and writes the session's plan; prints one line
 #   end    returns unfinished checks to the queue, applies the scope guard,
 #          reviews proposals, records the memory, the backlog and the proposals,
 #          and releases the lock
-# The agent tests between the two, in its own session, isolated in
-# .worktrees/_visual_qa (OPENSPEC_SLOT=97) while the headless cycle judges in
+# The agent tests between the two, in its own session: its commands run in
+# .worktrees/_visual_qa, on the slot visual_qa.slot names (none by default: the
+# ports and databases of the main checkout), while the headless cycle judges in
 # .worktrees/_cycle (OPENSPEC_SLOT=98), so the two run in parallel and reconcile
 # the memory, the backlog and the proposals when they record.
 set -uo pipefail
@@ -43,6 +46,26 @@ prepare_visual_worktree() {
   prepare_session_worktree "$VISUAL_WT" "$base_ref"
 }
 
+# Each repository's service.prepare (repo.config.yaml) readies .worktrees/_visual_qa for
+# the browser: dependencies the clone lacks, a database to migrate and seed, local
+# configuration linked from the main checkout (OPENSPEC_MAIN_ROOT). It runs through the
+# repository's env_script, on the session's slot. The last line says which one failed.
+prepare_services() {
+  local cfg rel cmd slot
+  slot="$(cat "$LOCK/slot" 2>/dev/null || true)"
+  for cfg in "$VISUAL_WT"/repos/*/repo.config.yaml; do
+    [ -f "$cfg" ] || continue
+    rel="repos/$(basename "$(dirname "$cfg")")"
+    cmd="$(ruby -ryaml -e 'v = ((YAML.safe_load_file(ARGV[0]) rescue {}) || {}).dig("service", "prepare"); puts v if v.is_a?(String)' "$cfg")"
+    [ -n "${cmd//[[:space:]]/}" ] || continue
+    echo "---- [prepare] $rel: $cmd"
+    if ! OPENSPEC_SLOT="$slot" OPENSPEC_MAIN_ROOT="$ROOT" bash "$VISUAL_WT/bin/repo_exec.sh" "$VISUAL_WT/$rel" bash -c "$cmd"; then
+      echo "service.prepare of $rel failed"
+      return 1
+    fi
+  done
+}
+
 case "${1:-}" in
   begin)
     if [ -f "$LOG_DIR/PAUSE" ]; then echo "visual-qa: paused ($(head -1 "$LOG_DIR/PAUSE"))"; exit 0; fi
@@ -60,8 +83,16 @@ case "${1:-}" in
       echo "$$" > "$LOCK/pid"
       date +%s > "$LOCK/started"
       echo $(( ($(setting minutes 40) + 30) * 60 )) > "$LOCK/ttl"
+      # The slot bin/repo_exec.sh gives the session's commands: none by default.
+      setting slot "" > "$LOCK/slot"
       bash bin/sync_repos.sh > "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || echo "visual-qa: sync reported a problem (see log/cycle/visual-$STAMP.sync.log)"
       prepare_visual_worktree >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || { rm -rf "$LOCK"; return 1; }
+      if ! bash bin/check_ai_engines.sh --services >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1; then
+        echo "visual-qa: $(tail -1 "$CYCLE_DIR/visual-$STAMP.sync.log")"; rm -rf "$LOCK"; return 1
+      fi
+      prepare_services >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || {
+        echo "visual-qa: $(tail -1 "$CYCLE_DIR/visual-$STAMP.sync.log") (see log/cycle/visual-$STAMP.sync.log)"; rm -rf "$LOCK"; return 1
+      }
       # The plan through the worktree's log/ link, so that take names it relative to the root.
       ruby "$VISUAL_WT/bin/visual_qa.rb" take "$STAMP" "$VISUAL_WT/log/cycle/visual-$STAMP.md" || { rm -rf "$LOCK"; return 1; }
     }
@@ -100,5 +131,5 @@ case "${1:-}" in
     echo "visual-qa: session $STAMP closed"
     ;;
   *)
-    sed -n '2,17p' "$0"; exit 2 ;;
+    sed -n '2,21p' "$0"; exit 2 ;;
 esac

@@ -164,6 +164,11 @@ module KitConfig
             'bin/visual_qa.sh, bin/visual_qa.rb'),
     setting('cycle.visual_qa.max_items_per_session', :int, 5, 'queued checks one visual session takes; the rest wait',
             'bin/visual_qa.rb'),
+    setting('cycle.visual_qa.slot', :int, nil,
+            "the OPENSPEC_SLOT of the visual session's commands, which run in .worktrees/_visual_qa: its own ports and " \
+            'databases, as env_script derives them; empty: none, so the ports and databases of the main checkout (97 is ' \
+            "free: workers take 1, 2, ..., the cycle's judgment 98, the merger 99)",
+            'bin/visual_qa.sh, bin/repo_exec.sh'),
     setting('cycle.qa.skills', :list, [], "the application's own QA skills the cycle and the visual session use",
             "bin/visual_qa.rb, the cycle's judgment", change: 'edit config/cycle.yaml, for example skills: [browser-qa]'),
     setting('cycle.memory.max_chars', :int, OpenSpecMemory::DEFAULTS['max_chars'],
@@ -513,6 +518,11 @@ module KitConfig
     elsif !file.empty? && File.read(full).include?('{{')
       report[:warnings] << "roadmap.file: #{file} still has {{...}} placeholders; the cycle proposes nothing from it until they are filled"
     end
+    slot = data.dig('visual_qa', 'slot')
+    if slot.is_a?(Integer) && (slot.zero? || slot <= OpenSpecSettings.get(ROOT, 'dispatch.workers') || [98, 99].include?(slot))
+      report[:errors] << "visual_qa.slot: #{slot} is taken (workers 1 to dispatch.workers, the cycle's judgment 98, the merger 99); " \
+                         'leave it empty for the main checkout, or take 97'
+    end
     approval = data.dig('proposals', 'approval') || 'jev'
     return unless approval == 'jev'
 
@@ -677,7 +687,24 @@ module KitConfig
     gates = (cfg['gates'] || {}).to_h.reject { |_, c| c.to_s.strip.empty? || placeholder?(c) }
     report[:warnings] << 'no gate set: changes to it merge untested' if gates.empty?
     report[:warnings] << 'no test gate' if gates.any? && !gates.key?('test')
+    repo_settings_problems(cfg, report)
     report
+  end
+
+  # requires, regression_when and service.prepare: read by the preflight, run_gates.sh and visual_qa.sh.
+  def repo_settings_problems(cfg, report)
+    requires = cfg['requires']
+    unless requires.nil? || (requires.is_a?(Hash) && requires.all? { |k, v| k.is_a?(String) && v.is_a?(String) && !v.strip.empty? })
+      report[:errors] << 'requires: must map a name to the command that checks it, e.g. postgres: "pg_isready -p 5432"'
+    end
+    globs = cfg['regression_when']
+    if !globs.nil? && !(globs.is_a?(Array) && globs.all? { |g| g.is_a?(String) && !g.strip.empty? })
+      report[:errors] << 'regression_when: must be a list of path globs, e.g. ["app/models/**"]'
+    elsif Array(globs).any? && (cfg['regression'] || {}).to_h.values.none? { |c| c.is_a?(String) && !c.strip.empty? && !placeholder?(c) }
+      report[:warnings] << 'regression_when: set, but no regression command: a change there runs nothing more than its gates'
+    end
+    prepare = cfg.is_a?(Hash) && cfg['service'].is_a?(Hash) ? cfg['service']['prepare'] : nil
+    report[:errors] << 'service.prepare: must be a command (text)' unless prepare.nil? || prepare.is_a?(String)
   end
 
   def kit_drift
@@ -766,6 +793,9 @@ module KitConfig
   # ------------------------------------------------------------------ set
 
   def parse_value(setting, text, data)
+    # A setting whose default is empty (visual_qa.slot) is cleared by an empty value.
+    return nil if text.to_s.strip.empty? && setting['default'].nil? && setting['type'] == :int
+
     value = case setting['type']
             when :int then Integer(text, 10)
             when :bool then { 'true' => true, 'false' => false }.fetch(text)
@@ -835,14 +865,19 @@ module KitConfig
     before = YAML.safe_load_file(full) || {}
     value = parse_value(setting, text, before)
     old = value_at(before, key)
-    return puts("#{FILES[file]}: #{key.delete_prefix("#{file}.")} is already #{format_value(value)}") if old == value && !old.nil?
+    return puts("#{FILES[file]}: #{key.delete_prefix("#{file}.")} is already #{format_value(value)}") if old == value && !(old.nil? && !text.to_s.strip.empty?)
 
     lines = File.read(full).lines
     keys = keys_of(key).drop(1)
     spot = locate(lines, keys) || raise(Error, "cannot find where #{key} goes in #{FILES[file]}; edit it by hand")
     if spot[:line]
       match = lines[spot[:line]].match(/\A(?<head> *[^:#]+:[ \t]*)(?<value>.*?)(?<tail>[ \t]+#.*)?(?<eol>\r?\n)?\z/)
-      lines[spot[:line]] = "#{match[:head]}#{literal(value, match[:value])}#{match[:tail]}#{match[:eol] || "\n"}"
+      # `slot:` with no value has no space after its colon: YAML needs one before a value.
+      head = if value.nil? then match[:head].sub(/[ \t]+\z/, '')
+             elsif match[:head].match?(/[ \t]\z/) then match[:head]
+             else "#{match[:head]} "
+             end
+      lines[spot[:line]] = "#{head}#{value.nil? ? '' : literal(value, match[:value])}#{match[:tail]}#{match[:eol] || "\n"}"
     else
       lines.insert(spot[:insert_after] + 1, "#{' ' * spot[:indent]}#{keys.last}: #{literal(value, nil)}\n")
     end

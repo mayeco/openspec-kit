@@ -374,6 +374,7 @@ class OpenSpecMerger
     O.git(['worktree', 'remove', '--force', m['worktree']], chdir: O::ROOT) if m['worktree'] && Dir.exist?(m['worktree'])
     O.git(['branch', '-D', m['branch']], chdir: O::ROOT)
     O.git(%w[worktree prune], chdir: O::ROOT)
+    FileUtils.rm_rf(O.scratch_dir(m['change_name']))
   end
 end
 

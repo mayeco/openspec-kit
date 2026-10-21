@@ -11,7 +11,7 @@ The umbrella of the application, built specification first with [OpenSpec](https
 ├── openspec/specs/          canonical behavior: what the application does today
 ├── openspec/changes/        changes in progress, and archive/ once integrated
 ├── repos/<name>/            the application's code, one git submodule per repository
-│   └── repo.config.yaml     its base branch, gates, regression suite, dev command, env_script
+│   └── repo.config.yaml     its base branch, gates, regression suite and when it runs, dev command, env_script, required services
 ├── config/                  settings the scripts read: agents.yaml, pipeline.yaml, cycle.yaml,
 │                            exploration.yaml, jev_policy.yaml; the backlog and the proposals;
 │                            prompts/: the agents' prompts (plan.md, build.md, cycle.md)

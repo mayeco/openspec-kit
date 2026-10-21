@@ -1227,7 +1227,10 @@ class OpenSpecDispatcher
     started = Time.now
     cmd = ['bash', O::AGENT_EXEC, wt, prompt_file]
     cmd << engine if engine
-    res = O.run(cmd, chdir: wt, log: log, env: AGENT_ENV.merge(slot_env), timeout: agent_budget(engine))
+    scratch = O.scratch_dir(change)
+    FileUtils.mkdir_p(scratch)
+    env = AGENT_ENV.merge(slot_env).merge('TMPDIR' => scratch)
+    res = O.run(cmd, chdir: wt, log: log, env: env, timeout: agent_budget(engine))
     # agent_exec.sh names each engine it tried; the last one is the one that ran (role fallbacks).
     used = res.out.scan(/agent_exec: engine (\S+) exited \d+/).flatten.last || engine || 'default'
     O.emit('agent.exit', change: change, phase: phase, code: res.code, seconds: (Time.now - started).round, engine: used,

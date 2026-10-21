@@ -24,6 +24,9 @@ and implement the pending tasks in order.
 - Application code lives in the child repositories under repos/, each already on branch {{branch}}.
 - Pair every behavior change with automated tests. Mark a task `- [x]` only after its verification passes.
 - Run `bash bin/run_gates.sh` before you finish and fix every failure.
+- Keep logs and scratch files (gate output, notes, downloads) under `$TMPDIR`, this change's own directory
+  outside the worktree. Anything you leave outside repos/ and openspec/changes/{{change}}/ fails
+  verification, and anything inside repos/ is committed with the code.
 - On a repair round, openspec/changes/{{change}}/repairs.md lists what earlier rounds were asked to fix, what
   they changed and whether that passed. The dispatcher writes it: never edit it.
 - Leave lessons for later changes in openspec/changes/{{change}}/handoff.md, one block per lesson, only for

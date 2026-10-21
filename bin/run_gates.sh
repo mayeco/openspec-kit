@@ -13,6 +13,8 @@
 # test, build, then any extra keys (e.g. secrets) in file order. --regression runs
 # the repo's `regression` commands instead (after its setup gate), or its gates
 # when it has none: the full suite once per cycle, fast gates for every change.
+# A change that touches a path of the repo's `regression_when` globs runs its
+# regression commands too, after the gates (at every BUILD and at merge).
 # Empty or un-instantiated ({{...}}) commands are skipped with a warning. Each
 # command runs through bin/repo_exec.sh, so the repo's env_script prepares the
 # toolchain first, and sees OPENSPEC_CHANGED_FILES: the repo's files changed
@@ -32,7 +34,7 @@ while [ $# -gt 0 ]; do
     --regression) REGRESSION=1 ;;
     --base) BASE="${2:?--base needs a ref}"; shift ;;
     --repo) REPOS+=("${2:?--repo needs a name}"); shift ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "run_gates: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -115,11 +117,24 @@ for name in $(printf '%s\n' "${REPOS[@]+"${REPOS[@]}"}" | sort -u); do
     esac
   done < <(ruby -ryaml -e '
     cfg = YAML.safe_load_file(ARGV[0]) || {}
-    usable = ->(set) { (set || {}).select { |_, v| v.is_a?(String) && !v.strip.empty? && !v.include?("{{") } }
+    usable = ->(set) { (set.is_a?(Hash) ? set : {}).select { |_, v| v.is_a?(String) && !v.strip.empty? && !v.include?("{{") } }
     gates = cfg.fetch("gates", {}) || {}
+    regression = usable.call(cfg["regression"])
     # The sweep runs the regression commands when the repo has any, after its setup gate.
-    if ARGV[1] == "1" && usable.call(cfg["regression"]).any?
-      gates = { "setup" => gates["setup"] }.merge(cfg["regression"])
+    if ARGV[1] == "1" && regression.any?
+      gates = { "setup" => gates["setup"] }.merge(regression)
+    elsif regression.any?
+      # A change to a path of regression_when runs the regression too, after the gates:
+      # what no related test covers (a validation, a boot default, a migration) may break.
+      # Globs relative to the repository; ** matches any depth.
+      flags = File::FNM_PATHNAME | File::FNM_EXTGLOB | File::FNM_DOTMATCH
+      matches = ->(pat, file) { File.fnmatch?(pat, file, flags) || File.fnmatch?(pat.sub(%r{/\*\*\z}, "/**/*"), file, flags) }
+      changed = ENV.fetch("OPENSPEC_CHANGED_FILES", "").lines.map(&:strip).reject(&:empty?)
+      hit = changed.find { |f| Array(cfg["regression_when"]).any? { |p| p.is_a?(String) && matches.call(p.strip, f) } }
+      if hit
+        warn "---- [info] #{File.basename(File.dirname(ARGV[0]))}: #{hit} matches regression_when: the regression runs after the gates"
+        regression.each { |k, v| gates["regression:#{k}"] = v }
+      end
     end
     standard = %w[setup lint typecheck test build]
     (standard + (gates.keys - standard)).each do |k|
