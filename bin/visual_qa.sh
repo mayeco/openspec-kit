@@ -15,8 +15,8 @@
 #          reviews proposals, records the memory, the backlog and the proposals,
 #          and releases the lock
 # The agent tests between the two, in its own session: its commands run in
-# .worktrees/_visual_qa, on the slot visual_qa.slot names (none by default: the
-# ports and databases of the main checkout), while the headless cycle judges in
+# .worktrees/_visual_qa, on the slot visual_qa.slot names (false, the default: none,
+# so the ports and databases of the main checkout), while the headless cycle judges in
 # .worktrees/_cycle (OPENSPEC_SLOT=98), so the two run in parallel and reconcile
 # the memory, the backlog and the proposals when they record.
 set -uo pipefail
@@ -37,6 +37,13 @@ mkdir -p "$CYCLE_DIR/reports"
 
 setting() { # <key> <default>: a value of visual_qa in config/cycle.yaml
   ruby -ryaml -e 'v = ((YAML.safe_load_file("config/cycle.yaml") rescue {}) || {}).dig("visual_qa", ARGV[0]); puts(v.nil? ? ARGV[1] : v)' "$1" "$2"
+}
+# visual_qa.slot as a slot number, or nothing for false: false, FALSE, "false", "" or no
+# value. bin/kit_config.rb check reports anything else, which counts as false here too.
+visual_slot() {
+  ruby -ryaml -e 'v = ((YAML.safe_load_file("config/cycle.yaml") rescue {}) || {}).dig("visual_qa", "slot")
+    v = v.strip if v.is_a?(String)
+    puts v if (v.is_a?(Integer) && v.positive?) || (v.is_a?(String) && v.match?(/\A[1-9][0-9]*\z/))'
 }
 
 prepare_visual_worktree() {
@@ -83,8 +90,8 @@ case "${1:-}" in
       echo "$$" > "$LOCK/pid"
       date +%s > "$LOCK/started"
       echo $(( ($(setting minutes 40) + 30) * 60 )) > "$LOCK/ttl"
-      # The slot bin/repo_exec.sh gives the session's commands: none by default.
-      setting slot "" > "$LOCK/slot"
+      # The slot bin/repo_exec.sh gives the session's commands: none while visual_qa.slot is false.
+      visual_slot > "$LOCK/slot"
       bash bin/sync_repos.sh > "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || echo "visual-qa: sync reported a problem (see log/cycle/visual-$STAMP.sync.log)"
       prepare_visual_worktree >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1 || { rm -rf "$LOCK"; return 1; }
       if ! bash bin/check_ai_engines.sh --services >> "$CYCLE_DIR/visual-$STAMP.sync.log" 2>&1; then

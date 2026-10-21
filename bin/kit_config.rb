@@ -164,10 +164,10 @@ module KitConfig
             'bin/visual_qa.sh, bin/visual_qa.rb'),
     setting('cycle.visual_qa.max_items_per_session', :int, 5, 'queued checks one visual session takes; the rest wait',
             'bin/visual_qa.rb'),
-    setting('cycle.visual_qa.slot', :int, nil,
-            "the OPENSPEC_SLOT of the visual session's commands, which run in .worktrees/_visual_qa: its own ports and " \
-            'databases, as env_script derives them; empty: none, so the ports and databases of the main checkout (97 is ' \
-            "free: workers take 1, 2, ..., the cycle's judgment 98, the merger 99)",
+    setting('cycle.visual_qa.slot', :slot, false,
+            "the OPENSPEC_SLOT of the visual session's commands, which run in .worktrees/_visual_qa: a number gives it its " \
+            'own ports and databases, as env_script derives them (97 is free: workers take 1, 2, ..., the cycle\'s judgment ' \
+            '98, the merger 99); false (also FALSE, "false" or no value): none, so the ports and databases of the main checkout',
             'bin/visual_qa.sh, bin/repo_exec.sh'),
     setting('cycle.qa.skills', :list, [], "the application's own QA skills the cycle and the visual session use",
             "bin/visual_qa.rb, the cycle's judgment", change: 'edit config/cycle.yaml, for example skills: [browser-qa]'),
@@ -428,8 +428,23 @@ module KitConfig
 
   # ------------------------------------------------------------------ check
 
+  # visual_qa.slot: false for no slot (false, FALSE, "false", "" or no value), a slot number, or nil when it is neither.
+  def slot_of(value)
+    value = value.strip.sub(/\A(["'])(.*)\1\z/, '\2').strip if value.is_a?(String)
+    return false if [nil, false, ''].include?(value) || (value.is_a?(String) && value.casecmp?('false'))
+    return value if value.is_a?(Integer) && value.positive?
+
+    value.to_i if value.is_a?(String) && value.match?(/\A[1-9][0-9]*\z/)
+  end
+
   def type_problem(setting, value)
     case setting['type']
+    when :slot
+      slot = slot_of(value)
+      if slot.nil? then 'must be false or a slot number'
+      elsif slot && (slot <= OpenSpecSettings.get(ROOT, 'dispatch.workers') || [98, 99].include?(slot))
+        "#{slot} is taken (workers 1 to dispatch.workers, the cycle's judgment 98, the merger 99): false for the main checkout, or 97"
+      end
     when :int then 'must be a whole number >= 0' unless value.is_a?(Integer) && value >= 0
     when :bool then 'must be true or false' unless [true, false].include?(value)
     when :enum
@@ -517,11 +532,6 @@ module KitConfig
       report[:warnings] << "roadmap.file: #{file} does not exist; the cycle proposes nothing from a roadmap"
     elsif !file.empty? && File.read(full).include?('{{')
       report[:warnings] << "roadmap.file: #{file} still has {{...}} placeholders; the cycle proposes nothing from it until they are filled"
-    end
-    slot = data.dig('visual_qa', 'slot')
-    if slot.is_a?(Integer) && (slot.zero? || slot <= OpenSpecSettings.get(ROOT, 'dispatch.workers') || [98, 99].include?(slot))
-      report[:errors] << "visual_qa.slot: #{slot} is taken (workers 1 to dispatch.workers, the cycle's judgment 98, the merger 99); " \
-                         'leave it empty for the main checkout, or take 97'
     end
     approval = data.dig('proposals', 'approval') || 'jev'
     return unless approval == 'jev'
@@ -793,10 +803,12 @@ module KitConfig
   # ------------------------------------------------------------------ set
 
   def parse_value(setting, text, data)
-    # A setting whose default is empty (visual_qa.slot) is cleared by an empty value.
-    return nil if text.to_s.strip.empty? && setting['default'].nil? && setting['type'] == :int
-
     value = case setting['type']
+            when :slot
+              slot = slot_of(text)
+              raise Error, "#{setting['key']} must be false or a slot number, not #{text.inspect}" if slot.nil?
+
+              slot
             when :int then Integer(text, 10)
             when :bool then { 'true' => true, 'false' => false }.fetch(text)
             when :pipeline then OpenSpecSettings.parse(setting['key'].delete_prefix('pipeline.'), text) || text
@@ -865,19 +877,16 @@ module KitConfig
     before = YAML.safe_load_file(full) || {}
     value = parse_value(setting, text, before)
     old = value_at(before, key)
-    return puts("#{FILES[file]}: #{key.delete_prefix("#{file}.")} is already #{format_value(value)}") if old == value && !(old.nil? && !text.to_s.strip.empty?)
+    return puts("#{FILES[file]}: #{key.delete_prefix("#{file}.")} is already #{format_value(value)}") if old == value && !old.nil?
 
     lines = File.read(full).lines
     keys = keys_of(key).drop(1)
     spot = locate(lines, keys) || raise(Error, "cannot find where #{key} goes in #{FILES[file]}; edit it by hand")
     if spot[:line]
       match = lines[spot[:line]].match(/\A(?<head> *[^:#]+:[ \t]*)(?<value>.*?)(?<tail>[ \t]+#.*)?(?<eol>\r?\n)?\z/)
-      # `slot:` with no value has no space after its colon: YAML needs one before a value.
-      head = if value.nil? then match[:head].sub(/[ \t]+\z/, '')
-             elsif match[:head].match?(/[ \t]\z/) then match[:head]
-             else "#{match[:head]} "
-             end
-      lines[spot[:line]] = "#{head}#{value.nil? ? '' : literal(value, match[:value])}#{match[:tail]}#{match[:eol] || "\n"}"
+      # A key with no value (`slot:`) has no space after its colon: YAML needs one before a value.
+      head = match[:head].match?(/[ \t]\z/) ? match[:head] : "#{match[:head]} "
+      lines[spot[:line]] = "#{head}#{literal(value, match[:value])}#{match[:tail]}#{match[:eol] || "\n"}"
     else
       lines.insert(spot[:insert_after] + 1, "#{' ' * spot[:indent]}#{keys.last}: #{literal(value, nil)}\n")
     end

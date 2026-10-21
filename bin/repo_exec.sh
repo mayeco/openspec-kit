@@ -25,7 +25,7 @@ export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.loc
 
 # While a visual QA session lives, its commands run in .worktrees/_visual_qa (what is on
 # origin), on the slot its begin recorded from visual_qa.slot of config/cycle.yaml: none
-# by default, so the ports and databases of the main checkout. A lock past its start plus
+# while it is false, so the ports and databases of the main checkout. A lock past its start plus
 # its time-to-live is a dead session's.
 VISUAL_LOCK="$ROOT/log/visual_qa.lock"
 if [ -z "${OPENSPEC_SLOT:-}" ] && [ -d "$VISUAL_LOCK" ] &&
