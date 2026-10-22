@@ -17,22 +17,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
-# A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes.
-bounded() { if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" 180 "$@"; else "$@"; fi; }
-within() { # <seconds> <command...>: exit 124 once it ran that long, its process group killed
-  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$@"; return; fi
-  ruby -e '
-    pid = Process.spawn(*ARGV.drop(1), pgroup: true)
-    deadline = Time.now + ARGV[0].to_i
-    until (done = Process.wait2(pid, Process::WNOHANG))
-      if Time.now > deadline
-        begin; Process.kill("KILL", -pid); rescue StandardError; end
-        exit 124
-      end
-      sleep 0.1
-    end
-    exit(done[1].exitstatus || 1)' "$@"
+# A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes
+# (OPENSPEC_PING_SECONDS, for one manual run).
+PING_SECONDS="${OPENSPEC_PING_SECONDS:-180}"
+# Every command below runs for at most its seconds, then its process group gets TERM and,
+# 10 seconds later, KILL: a CLI that ignores TERM held a cycle here for 41 minutes, as GNU
+# timeout without --kill-after waits for it forever. Without GNU timeout, bin/lib/bounded.rb
+# does the same. Exit 124 when the time ran out, killed or not.
+within() { # <seconds> <command...>
+  local rc=0
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" --kill-after=10 "$@" || rc=$?
+  else ruby bin/lib/bounded.rb "$1" 10 "${@:2}" || rc=$?
+  fi
+  [ "$rc" -eq 137 ] && rc=124 # KILLed once its time ran out
+  return "$rc"
 }
+bounded() { within "$PING_SECONDS" "$@"; }
 
 # What the gates of each child repository need running (a database, a search engine):
 # requires: of its repo.config.yaml, name => command, each run through its env_script

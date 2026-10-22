@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "2.19.1",
-  "source_commit": "128efdb166f8a7fbab7f3873ab9e50bd8de720d9",
+  "version": "2.19.2",
+  "source_commit": "321295b2bab722dc65eed14b75e88e31af9d99b4",
   "source_dirty": false,
-  "built_at": "2026-10-21T16:19:34Z",
+  "built_at": "2026-10-22T03:19:02Z",
   "toolchain": {
     "openspec": "1.14.3",
     "git": "2.56.0",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "99a034e137ca8457f6043d18643756fb06356af4f4a6b3f306f5ca80b709071c"
+      "sha256": "cacd66a2595a2bcf60a627e2e83b52fa3319eb0117346bb1e752e3c145dcd5c9"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -46,7 +46,7 @@
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "90e614307f20f30f3870627cfe2d8d4beb137c4055196e880b49d475d07fd8eb"
+      "sha256": "039a09901204ce455d0845c4f3cf4c5cd3986f85c7440a2c7b5fdf44b9513fc0"
     },
     "bin/app_setup.rb": {
       "class": "kit",
@@ -54,7 +54,7 @@
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "be3bb30eb86052c614cb109ca392701888ffdea0d3af087cb3bdb79584b9fde2"
+      "sha256": "f01095cc875bed4e0859046e2bc625c3e8d26ad8acb0527f8a0b4419d712188d"
     },
     "bin/completed_since.sh": {
       "class": "kit",
@@ -92,13 +92,17 @@
       "class": "kit",
       "sha256": "52515d69cd935d038d185497acbadb2b196d7aac9e9f70fae7726606b8de9feb"
     },
+    "bin/lib/bounded.rb": {
+      "class": "kit",
+      "sha256": "d5bb5a17f0e0c6572f1604941884350dc27d80ff41f4e99a2b0622a448b2dd00"
+    },
     "bin/lib/memory.rb": {
       "class": "kit",
       "sha256": "05c538ef37b183e6d6cd41ddd3c06cb0d0e5b06afdb8f8c4761c5fe77561c614"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
-      "sha256": "9e293500fff9fd3acd898672e89008a36ca4e812050c8cb0935ae27c341464e4"
+      "sha256": "6d3d37520f54a8d5ffaef53b476d86ffd5b7137701f25deb2ce5770c0f63a420"
     },
     "bin/lib/prompts.rb": {
       "class": "kit",

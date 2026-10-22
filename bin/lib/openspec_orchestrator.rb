@@ -117,14 +117,23 @@ module OpenSpecOrchestrator
     Result.new(out, code, err)
   end
 
+  # TERM to the command's process group, then KILL 10 seconds later: to the command if
+  # TERM did not stop it, and to anything it left in its group that ignores TERM (a gate's
+  # server, a test runner's child), which would otherwise outlive it.
   def terminate_group(pid)
     Process.kill('TERM', -pid)
+    reaped = false
     20.times do
-      return if Process.wait2(pid, Process::WNOHANG)
+      break if (reaped = Process.wait2(pid, Process::WNOHANG))
+
       sleep 0.5
     end
-    Process.kill('KILL', -pid)
-    Process.wait2(pid)
+    begin
+      Process.kill('KILL', -pid)
+    rescue Errno::ESRCH
+      nil
+    end
+    Process.wait2(pid) unless reaped
   rescue Errno::ESRCH, Errno::ECHILD
     nil
   end

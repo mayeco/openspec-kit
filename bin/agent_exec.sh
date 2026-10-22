@@ -55,9 +55,14 @@ TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # those signals.
 TIMEOUT_PID=""
 forward_signal() { [ -n "$TIMEOUT_PID" ] && kill -TERM "$TIMEOUT_PID" 2>/dev/null; }
+# Without GNU timeout, bin/lib/bounded.rb does what it does: the agent's process group gets
+# TERM at the limit (or on a forwarded signal) and KILL 60 seconds later, and the watchdog
+# below still runs. Before, such a machine ran every agent call with no limit at all.
+BOUNDED_RB="$(cd "$(dirname "$0")" && pwd)/lib/bounded.rb"   # absolute: this script cds into the work directory
 bounded() {
-  if [ -z "$TIMEOUT_BIN" ]; then "$@"; return; fi
-  "$TIMEOUT_BIN" --kill-after=60 "$LIMIT" "$@" &
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" --kill-after=60 "$LIMIT" "$@" &
+  else ruby "$BOUNDED_RB" "$LIMIT" 60 "$@" &
+  fi
   TIMEOUT_PID=$!
   trap forward_signal INT TERM
   WATCH_PID=""

@@ -10,7 +10,7 @@ The kit lets AI agents specify, build, verify and integrate an application with 
 | Ruby ≥ 3.1 | The dispatcher, the merger and the installer | `brew install ruby` |
 | OpenSpec CLI (verified 1.14.1) | Specifications, validation, archive | `brew install openspec` |
 | At least one agent CLI, logged in | Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), Hermes (`hermes`), OpenCode (`opencode`), Google Antigravity (`agy`), Kilo Code (`kilo`: `npm install -g @kilocode/cli`), Cline (`cline`: `npm install -g cline`, then `cline auth`), pi (`pi`: `curl -fsSL https://pi.dev/install.sh | sh`, then `/login` inside it or a provider's API key), oh-my-pi (`omp`: `brew install omp`, then `omp login`), Crush (`crush`: `brew install charmbracelet/tap/crush`, then a provider in its first interactive run or `crush login`) | Their own installers |
-| GNU timeout (recommended) | Bounds every agent call | `brew install coreutils` |
+| GNU timeout (recommended) | Bounds every agent call and preflight ping, with KILL after TERM for a CLI that ignores it; without it, the kit's `bin/lib/bounded.rb` does the same | `brew install coreutils` |
 | The version managers your repositories use | A repository's `env_script` loads the version it pins: rbenv or RVM, nvm or fnm, pyenv, goenv (`.go-version`), mise or asdf | `brew install goenv`, ... |
 | Jev (optional) | A calibrated judge for plans, failures and repairs, test coverage, risk and proposals | `brew install shaharia-lab/tap/jev`, then `jev auth login` |
 
