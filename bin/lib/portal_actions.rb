@@ -70,7 +70,30 @@ module OpenSpecPortal
     last
   end
 
-  def run_agent_prompt(agent:, prompt:, async: false, workdir: ROOT)
+  RUN_ID = /\A[A-Za-z0-9_-]+\z/
+  OUTPUT_TAIL = 200_000
+
+  # The worker worktree a directory is, as a change name (nil for any other directory).
+  def change_for_workdir(workdir)
+    return nil unless File.dirname(workdir.to_s) == O::WORKTREE_BASE
+
+    File.basename(workdir)[/\Aworker-(.+)\z/, 1]
+  end
+
+  # Waits for a process the portal spawned and records how it ended (a stop the operator asked for is `stopped`).
+  def watch_process(pid, meta_file, meta)
+    Thread.new do
+      _, st = Process.wait2(pid)
+      code = st.exitstatus || (128 + st.termsig.to_i)
+      cur = read_json(meta_file, meta)
+      status = cur['stop_requested'] ? 'stopped' : (code.zero? ? 'ok' : 'failed')
+      O.write_json_atomic(meta_file, cur.merge('status' => status, 'code' => code, 'finished_at' => now))
+    rescue StandardError
+      nil
+    end
+  end
+
+  def run_agent_prompt(agent:, prompt:, async: false, workdir: ROOT, parent: nil, relation: nil, summary: nil)
     ensure_dirs!
     agent = agent.to_s.strip
     prompt = prompt.to_s
@@ -90,6 +113,10 @@ module OpenSpecPortal
       'id' => id, 'agent' => (chosen.empty? ? 'auto' : chosen), 'prompt' => prompt, 'workdir' => workdir,
       'started_at' => now, 'status' => 'running', 'pid' => nil, 'code' => nil, 'finished_at' => nil
     }
+    meta['change'] = change_for_workdir(workdir) if change_for_workdir(workdir)
+    meta['parent'] = parent if parent
+    meta['relation'] = relation if relation
+    meta['summary'] = summary if summary
     O.write_json_atomic(meta_file, meta)
     cmd = ['bash', File.join(ROOT, 'bin', 'agent_exec.sh'), workdir, prompt_file]
     cmd << chosen unless chosen.empty?
@@ -98,14 +125,7 @@ module OpenSpecPortal
       pid = Process.spawn({ 'PATH' => PATH_ENV }, *cmd, chdir: workdir, out: [out_file, 'w'], err: [:child, :out], in: File::NULL, pgroup: true)
       meta['pid'] = pid
       O.write_json_atomic(meta_file, meta)
-      Thread.new do
-        _, st = Process.wait2(pid)
-        code = st.exitstatus || (128 + st.termsig.to_i)
-        done = read_json(meta_file, meta).merge('status' => (code.zero? ? 'ok' : 'failed'), 'code' => code, 'finished_at' => now)
-        O.write_json_atomic(meta_file, done)
-      rescue StandardError
-        nil
-      end
+      watch_process(pid, meta_file, meta)
       return meta.merge('output' => '')
     end
 
@@ -116,27 +136,119 @@ module OpenSpecPortal
     meta.merge('output' => res.out)
   end
 
-  def list_runs(limit = 25)
-    Dir.glob(File.join(RUNS_DIR, '*.json')).sort.reverse.first(limit).filter_map do |f|
+  # A new run that carries an earlier run's request and output as context, plus the operator's follow-up.
+  def continue_run!(id, prompt:, agent: nil, context: true, async: true)
+    prev = get_run(id) or raise ArgumentError, 'run not found'
+    follow = prompt.to_s.strip
+    raise ArgumentError, 'follow-up cannot be empty' if follow.empty?
+
+    text = if context
+             tail = prev['output'].to_s[-6000..] || prev['output'].to_s
+             "You are continuing an earlier agent run in the same working directory.\n\n## Previous request\n\n#{prev['prompt']}\n\n" \
+               "## Previous output (last part)\n\n#{tail}\n\n## Follow-up\n\n#{follow}\n"
+           else
+             follow
+           end
+    workdir = File.directory?(prev['workdir'].to_s) ? prev['workdir'] : ROOT
+    run_agent_prompt(agent: agent.to_s.strip.empty? ? prev['agent'].to_s.sub('auto', '') : agent, prompt: text, async: async,
+                     workdir: workdir, parent: id, relation: 'continue', summary: follow)
+  end
+
+  # The same request again, in the same directory, with the same agent unless another one is named.
+  def rerun_run!(id, agent: nil, async: true)
+    prev = get_run(id) or raise ArgumentError, 'run not found'
+    workdir = File.directory?(prev['workdir'].to_s) ? prev['workdir'] : ROOT
+    run_agent_prompt(agent: agent.to_s.strip.empty? ? prev['agent'].to_s.sub('auto', '') : agent, prompt: prev['prompt'], async: async,
+                     workdir: workdir, parent: id, relation: 'rerun', summary: prev['summary'])
+  end
+
+  def run_title(meta)
+    (meta['summary'] || meta['prompt']).to_s.lines.map(&:strip).find { |l| !l.empty? }.to_s[0, 110]
+  end
+
+  def tail_of(path, bytes = OUTPUT_TAIL)
+    return ['', 0, false] unless File.exist?(path)
+
+    size = File.size(path)
+    return [File.read(path).force_encoding('UTF-8').scrub, size, false] if size <= bytes
+
+    [File.open(path, 'rb') { |f| f.seek(size - bytes); f.read }.force_encoding('UTF-8').scrub, size, true]
+  end
+
+  def decorate_run(meta, file, output)
+    out_path = file.sub(/\.json\z/, '.out.log')
+    started = Time.parse(meta['started_at']) rescue nil
+    ended = (Time.parse(meta['finished_at']) rescue nil) || (Time.now if meta['status'] == 'running')
+    meta = meta.merge('title' => run_title(meta), 'output_size' => (File.size(out_path) if File.exist?(out_path)).to_i,
+                      'duration_seconds' => (started && ended ? (ended - started).round : nil))
+    meta['change'] ||= change_for_workdir(meta['workdir'])
+    return meta unless output
+
+    text, _size, truncated = tail_of(out_path)
+    meta.merge('output' => text, 'output_truncated' => truncated)
+  end
+
+  def fix_stale!(file, meta, label)
+    return unless meta['status'] == 'running' && meta['pid'] && !alive?(meta['pid'])
+
+    meta['status'] = meta['stop_requested'] ? 'stopped' : label
+    O.write_json_atomic(file, meta)
+  end
+
+  # Manual agent runs, newest first, without their output unless asked.
+  def read_runs(output: false, limit: nil)
+    files = Dir.glob(File.join(RUNS_DIR, '*.json')).sort.reverse
+    files = files.first(limit) if limit
+    files.filter_map do |f|
       m = read_json(f) or next
-      out_path = f.sub(/\.json\z/, '.out.log')
-      if m['status'] == 'running' && m['pid'] && !alive?(m['pid'])
-        m['status'] = 'stopped'
-        O.write_json_atomic(f, m)
-      end
-      m.merge('output' => (File.exist?(out_path) ? File.read(out_path)[-8000..] || File.read(out_path) : ''))
+      fix_stale!(f, m, 'stopped')
+      decorate_run(m, f, output)
     end
   end
 
+  def list_runs(limit = 25, output: true) = read_runs(output: output, limit: limit)
+
+  def running_runs = read_runs(limit: 100).select { |r| r['status'] == 'running' }
+
   def get_run(id)
-    return nil unless id.to_s.match?(/\A[A-Za-z0-9_-]+\z/)
+    return nil unless id.to_s.match?(RUN_ID)
 
     f = File.join(RUNS_DIR, "#{id}.json")
     return nil unless File.exist?(f)
 
     m = read_json(f) or return nil
-    out_path = File.join(RUNS_DIR, "#{id}.out.log")
-    m.merge('output' => (File.exist?(out_path) ? File.read(out_path) : ''))
+    fix_stale!(f, m, 'stopped')
+    run = decorate_run(m, f, true)
+    others = read_runs
+    run.merge('children' => others.select { |r| r['parent'] == id }.reverse,
+              'parent_run' => others.find { |r| r['id'] == m['parent'] })
+  end
+
+  def stop_process!(meta_file)
+    meta = read_json(meta_file) or raise ArgumentError, 'not found'
+    raise ArgumentError, 'it is not running' unless meta['status'] == 'running' && alive?(meta['pid'])
+
+    O.write_json_atomic(meta_file, meta.merge('stop_requested' => true))
+    begin
+      Process.kill('TERM', -meta['pid'].to_i)
+    rescue Errno::ESRCH, Errno::EPERM
+      Process.kill('TERM', meta['pid'].to_i)
+    end
+    meta
+  rescue Errno::ESRCH
+    meta
+  end
+
+  def stop_run!(id)
+    raise ArgumentError, 'invalid run id' unless id.to_s.match?(RUN_ID)
+
+    stop_process!(File.join(RUNS_DIR, "#{id}.json"))
+  end
+
+  def stop_job!(id)
+    raise ArgumentError, 'invalid job id' unless id.to_s.match?(RUN_ID)
+
+    stop_process!(File.join(JOBS_DIR, "#{id}.json"))
   end
 
   def start_job(kind, *cmd)
@@ -148,27 +260,44 @@ module OpenSpecPortal
                         out: [out_file, 'w'], err: [:child, :out], in: File::NULL, pgroup: true)
     meta = { 'id' => id, 'kind' => kind, 'command' => cmd.join(' '), 'pid' => pid, 'started_at' => now, 'status' => 'running' }
     O.write_json_atomic(meta_file, meta)
-    Thread.new do
-      _, st = Process.wait2(pid)
-      code = st.exitstatus || (128 + st.termsig.to_i)
-      O.write_json_atomic(meta_file, read_json(meta_file, meta).merge('status' => (code.zero? ? 'ok' : 'failed'),
-                                                                      'code' => code, 'finished_at' => now))
-    rescue StandardError
-      nil
-    end
+    watch_process(pid, meta_file, meta)
     meta
   end
 
-  def list_jobs(limit = 20)
-    Dir.glob(File.join(JOBS_DIR, '*.json')).sort.reverse.first(limit).filter_map do |f|
+  def decorate_job(meta, file, output)
+    out_path = file.sub(/\.json\z/, '.out.log')
+    started = Time.parse(meta['started_at']) rescue nil
+    ended = (Time.parse(meta['finished_at']) rescue nil) || (Time.now if meta['status'] == 'running')
+    meta = meta.merge('output_size' => (File.size(out_path) if File.exist?(out_path)).to_i,
+                      'duration_seconds' => (started && ended ? (ended - started).round : nil))
+    return meta unless output
+
+    text, _size, truncated = tail_of(out_path)
+    meta.merge('output' => text, 'output_truncated' => truncated)
+  end
+
+  # Background kit jobs, newest first, without their output unless asked.
+  def read_jobs(output: false, limit: nil)
+    files = Dir.glob(File.join(JOBS_DIR, '*.json')).sort.reverse
+    files = files.first(limit) if limit
+    files.filter_map do |f|
       m = read_json(f) or next
-      out_path = f.sub(/\.json\z/, '.out.log')
-      if m['status'] == 'running' && m['pid'] && !alive?(m['pid'])
-        m['status'] = 'finished'
-        O.write_json_atomic(f, m)
-      end
-      m.merge('output' => (File.exist?(out_path) ? File.read(out_path)[-4000..] || File.read(out_path) : ''))
+      fix_stale!(f, m, 'finished')
+      decorate_job(m, f, output)
     end
+  end
+
+  def list_jobs(limit = 20) = read_jobs(output: true, limit: limit)
+
+  def running_jobs = read_jobs(limit: 50).select { |j| j['status'] == 'running' }
+
+  def get_job(id)
+    return nil unless id.to_s.match?(RUN_ID)
+
+    f = File.join(JOBS_DIR, "#{id}.json")
+    m = read_json(f) or return nil
+    fix_stale!(f, m, 'finished')
+    decorate_job(m, f, true)
   end
 
   def pause!(reason)

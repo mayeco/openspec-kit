@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenSpec Kit Portal</title>
+  <link rel="stylesheet" href="/assets/portal.css">
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <a href="/" class="brand"><span class="logo">&#9670;</span><span><b>OpenSpec Kit</b><small id="app-name">&hellip;</small></span></a>
+      <nav id="nav" aria-label="Sections"></nav>
+    </aside>
+    <div id="content">
+      <header id="topbar">
+        <button class="icon burger" data-act="toggle-nav" title="Menu">&#9776;</button>
+        <div class="hist">
+          <button class="icon" data-act="back" title="Back (Alt+Left)">&larr;</button>
+          <button class="icon" data-act="forward" title="Forward (Alt+Right)">&rarr;</button>
+        </div>
+        <nav id="crumbs" aria-label="Breadcrumb"></nav>
+        <form id="goto" data-form="goto" autocomplete="off">
+          <input name="q" id="goto-input" placeholder="Find a change ( / )" aria-label="Find a change">
+        </form>
+        <div class="top-actions">
+          <span id="pause-pill" class="badge">&hellip;</span>
+          <button id="btn-pause" data-act="toggle-pause">Pause</button>
+          <button class="icon" data-act="reload" title="Reload this page">&#8635;</button>
+        </div>
+      </header>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="toast" role="status"></div>
+  <div id="modal-root"></div>
+  <script src="/assets/portal.js"></script>
+</body>
+</html>

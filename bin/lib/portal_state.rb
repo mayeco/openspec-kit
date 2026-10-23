@@ -18,6 +18,8 @@ module OpenSpecPortal
   JOBS_DIR = File.join(PORTAL_DIR, 'jobs')
   DEFAULT_PORT = 4567
   DEFAULT_BIND = '127.0.0.1'
+  CACHE = {}
+  CACHE_MUTEX = Mutex.new
   PATH_ENV = "#{ENV.fetch('OPENSPEC_PATH_PREFIX', "#{Dir.home}/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin")}:#{ENV.fetch('PATH', '')}"
 
   module_function
@@ -118,8 +120,8 @@ module OpenSpecPortal
       'merger_state' => read_json(File.join(LOG, 'merger_state.json')),
       'leases' => leases,
       'agents_in_use' => in_use,
-      'portal_runs' => list_runs.select { |r| r['status'] == 'running' },
-      'portal_jobs' => list_jobs.select { |j| j['status'] == 'running' }
+      'portal_runs' => running_runs,
+      'portal_jobs' => running_jobs
     }
   end
 
@@ -202,18 +204,7 @@ module OpenSpecPortal
       cdir = File.join(wt, 'openspec', 'changes', change)
       has_proposal = File.file?(File.join(cdir, 'proposal.md'))
       tasks_file = File.join(cdir, 'tasks.md')
-      tasks_done = 0
-      tasks_total = 0
-      if File.file?(tasks_file)
-        File.foreach(tasks_file) do |line|
-          if line.match?(/^\s*[-*+]\s+\[[xX]\]/)
-            tasks_done += 1
-            tasks_total += 1
-          elsif line.match?(/^\s*[-*+]\s+\[\s\]/)
-            tasks_total += 1
-          end
-        end
-      end
+      tasks_done, tasks_total = task_progress(tasks_file)
       nh_file = File.join(cdir, '.needs-human')
       needs_human = File.file?(nh_file) ? File.read(nh_file).strip : nil
       lease = leases[change]
@@ -283,6 +274,71 @@ module OpenSpecPortal
     [nil, nil]
   end
 
+  # Memoizes the result of a block while a file signature (mtime and size) holds.
+  def cached(key, sig)
+    entry = CACHE_MUTEX.synchronize { CACHE[key] }
+    return entry[1] if entry && entry[0] == sig
+
+    value = yield
+    CACHE_MUTEX.synchronize { CACHE[key] = [sig, value] }
+    value
+  end
+
+  def file_sig(path)
+    File.file?(path) ? [File.mtime(path).to_f, File.size(path)] : nil
+  end
+
+  # Text of a file, or only its last `tail` bytes (from a whole line on) when it is longer.
+  def read_text(path, tail: nil)
+    size = File.size(path)
+    truncated = tail.to_i.positive? && size > tail
+    text = if truncated
+             File.open(path, 'rb') { |f| f.seek(size - tail); f.read }.force_encoding('UTF-8').scrub.sub(/\A[^\n]*\n/, '')
+           else
+             File.read(path).force_encoding('UTF-8').scrub
+           end
+    { 'content' => text, 'size' => size, 'truncated' => truncated, 'mtime' => File.mtime(path).utc.iso8601 }
+  end
+
+  # [checked, total] of the task list of a change.
+  def task_progress(tasks_file)
+    done = total = 0
+    return [0, 0] unless File.file?(tasks_file)
+
+    File.foreach(tasks_file) do |line|
+      if line.match?(/^\s*[-*+]\s+\[[xX]\]/)
+        done += 1
+        total += 1
+      elsif line.match?(/^\s*[-*+]\s+\[\s\]/)
+        total += 1
+      end
+    end
+    [done, total]
+  end
+
+  # A UTC stamp as the kit writes them (20261023T170001Z, the Z optional) as a Time; nil when it is none.
+  def stamp_utc(stamp)
+    m = stamp.to_s.match(/\A(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?\z/) or return nil
+    Time.utc(*m.captures.map(&:to_i))
+  end
+
+  def parse_prompt_file(path)
+    base = File.basename(path)
+    stamp, phase = base.sub(/\.prompt\.md\z/, '').split('-', 2)
+    phase ||= 'run'
+    { 'file' => base, 'timestamp' => stamp, 'phase' => phase,
+      'role' => phase.start_with?('plan') ? 'plan' : 'build', 'repair' => phase.include?('repair'),
+      'size' => File.size(path), 'at' => (stamp_utc(stamp) || File.mtime(path)).utc.iso8601 }
+  end
+
+  # Every PLAN and BUILD prompt a change was run with, oldest first (no content).
+  def change_prompts(name)
+    dir = File.join(O::WORKER_LOG_DIR, name)
+    return [] unless File.directory?(dir)
+
+    Dir.glob(File.join(dir, '*.prompt.md')).sort.map { |f| parse_prompt_file(f) }
+  end
+
   def changes_catalog
     backlog = backlog_items.to_h { |i| [i['change_name'], i] }
     history = history_items.to_h { |i| [i['change_name'], i] }
@@ -298,10 +354,11 @@ module OpenSpecPortal
     wt_changes = Dir.glob(File.join(O::WORKTREE_BASE, 'worker-*')).select { |d| File.directory?(d) }.map { |d| File.basename(d).delete_prefix('worker-') }
     worker_dirs = Dir.glob(File.join(O::WORKER_LOG_DIR, '*')).select { |d| File.directory?(d) }.map { |d| File.basename(d) }
     worker_logs = Dir.glob(File.join(O::WORKER_LOG_DIR, '*.log')).map { |f| File.basename(f, '.log') }
-    archived = Dir.glob(File.join(ROOT, 'openspec', 'changes', 'archive', '*')).filter_map do |d|
-      File.basename(d)[/\A\d{4}-\d{2}-\d{2}-(.+)\z/, 1] if File.directory?(d)
+    archived = Dir.glob(File.join(ROOT, 'openspec', 'changes', 'archive', '*')).each_with_object({}) do |d, acc|
+      m = File.basename(d).match(/\A(\d{4}-\d{2}-\d{2})-(.+)\z/)
+      acc[m[2]] = "#{m[1]}T00:00:00Z" if m && File.directory?(d)
     end
-    names = (backlog.keys + history.keys + blocked.keys + ready + leases.keys + wt_changes + worker_dirs + worker_logs + archived).compact.uniq
+    names = (backlog.keys + history.keys + blocked.keys + ready + leases.keys + wt_changes + worker_dirs + worker_logs + archived.keys).compact.uniq
     names.select! { |n| n.match?(O::CHANGE_NAME) }
 
     names.map do |name|
@@ -309,100 +366,139 @@ module OpenSpecPortal
               elsif leases[name] == false then 'stale_lock'
               elsif ready.include?(name) then 'ready_to_merge'
               elsif blocked.key?(name) then 'blocked'
-              elsif history.key?(name) || archived.include?(name) then 'integrated'
+              elsif history.key?(name) || archived.key?(name) then 'integrated'
               elsif wt_changes.include?(name) then 'worktree'
               elsif backlog.key?(name) then 'queued'
               else 'recorded'
               end
-      wdir = File.join(O::WORKER_LOG_DIR, name)
-      prompts = File.directory?(wdir) ? Dir.glob(File.join(wdir, '*.prompt.md')).sort.map { |f| File.basename(f) } : []
+      prompts = change_prompts(name)
       item = backlog[name] || history[name] || {}
+      # Prompt stamps are written once; file mtimes move when logs are copied or restored, so they are only a fallback.
+      touched = prompts.map { |p| p['at'] }
+      if touched.empty?
+        [File.join(O::WORKER_LOG_DIR, "#{name}.log"), File.join(O::BLOCKED_DIR, "#{name}.json"),
+         File.join(O::READY_DIR, "#{name}.json")].each do |f|
+          touched << File.mtime(f).utc.iso8601 if File.file?(f)
+        end
+      end
+      touched << item['integrated_at'] << archived[name]
       {
         'change_name' => name, 'state' => state, 'priority' => item['priority'],
         'description' => item['description'], 'blocked_reason' => blocked.dig(name, 'reason'),
-        'prompt_count' => prompts.size, 'prompts' => prompts,
+        'prompt_count' => prompts.size, 'plan_count' => prompts.count { |p| p['role'] == 'plan' },
+        'build_count' => prompts.count { |p| p['role'] == 'build' }, 'repair_count' => prompts.count { |p| p['repair'] },
         'has_worktree' => wt_changes.include?(name),
-        'has_worker_log' => File.file?(File.join(O::WORKER_LOG_DIR, "#{name}.log"))
+        'has_worker_log' => File.file?(File.join(O::WORKER_LOG_DIR, "#{name}.log")),
+        'integrated_at' => item['integrated_at'], 'updated_at' => touched.compact.max
       }
     end.sort_by { |c| [%w[in_flight stale_lock blocked ready_to_merge worktree].index(c['state']) || 9, c['change_name']] }
   end
 
+  ARTIFACT_FILES = %w[proposal.md design.md tasks.md repairs.md handoff.md .needs-human].freeze
+
+  def change_artifact_list(art_dir)
+    return [] unless art_dir
+
+    names = ARTIFACT_FILES.select { |af| File.file?(File.join(art_dir, af)) }
+    names += Dir.glob(File.join(art_dir, 'specs', '**', 'spec.md')).sort.map { |sf| sf.delete_prefix("#{art_dir}/") }
+    names.map { |n| { 'name' => n, 'size' => File.size(File.join(art_dir, n)) } }
+  end
+
+  # Events of one change, newest first (the last `limit`).
+  def change_events(name, limit = 300)
+    return [] unless File.file?(O::EVENTS_FILE)
+
+    cached("change-events:#{name}", file_sig(O::EVENTS_FILE)) do
+      found = []
+      File.foreach(O::EVENTS_FILE) do |line|
+        line = line.scrub
+        next unless line.include?(name)
+
+        begin
+          e = JSON.parse(line)
+          found << e if e['change'] == name
+        rescue JSON::ParserError
+          next
+        end
+      end
+      found.last(limit).reverse
+    end
+  end
+
+  def rendered_prompt(name, role)
+    item = backlog_items.find { |i| i['change_name'] == name } || history_items.find { |i| i['change_name'] == name } ||
+           Proposals.read(Proposals::FILE).find { |i| i['change_name'] == name }
+    wt = File.join(O::WORKTREE_BASE, "worker-#{name}")
+    memory = OpenSpecMemory.prompt_block(File.directory?(wt) ? wt : ROOT, capabilities: [])
+    rules = (File.read(File.join(ROOT, OpenSpecPrompts::RULES)) rescue '')
+    case role
+    when 'plan'
+      OpenSpecPrompts.render(ROOT, 'plan', 'change' => name, 'goal' => (item && item['description']).to_s,
+                                           'memory' => memory, 'jev_hint' => '', 'authoring_rules' => rules, 'feedback' => '')
+    when 'build'
+      OpenSpecPrompts.render(ROOT, 'build', 'change' => name, 'branch' => "feat/spec-#{name}", 'memory' => memory,
+                                            'jev_hint' => '', 'authoring_rules' => rules, 'feedback' => '', 'rebuild' => '')
+    end
+  end
+
+  # Everything about one change except file contents (read them with change_file).
   def change_detail(change)
     name = change.to_s.strip
     return nil unless name.match?(O::CHANGE_NAME)
 
+    entry = changes_catalog.find { |c| c['change_name'] == name }
+    return nil unless entry
+
+    wt = File.join(O::WORKTREE_BASE, "worker-#{name}")
     wdir = File.join(O::WORKER_LOG_DIR, name)
-    prompts = if File.directory?(wdir)
-                Dir.glob(File.join(wdir, '*.prompt.md')).sort.map do |f|
-                  base = File.basename(f)
-                  stamp, phase = base.sub(/\.prompt\.md\z/, '').split('-', 2)
-                  role = phase.to_s.start_with?('plan') ? 'plan' : 'build'
-                  { 'file' => base, 'timestamp' => stamp, 'phase' => phase || 'run',
-                    'role' => role, 'size' => File.size(f), 'content' => File.read(f) }
-                end
-              else
-                []
-              end
-    jev_states = if File.directory?(wdir)
-                   Dir.glob(File.join(wdir, 'jev-*.state.json')).sort.map do |f|
-                     { 'file' => File.basename(f), 'content' => File.read(f) }
-                   end
-                 else
-                   []
-                 end
-    worker_files = []
-    log_path = File.join(O::WORKER_LOG_DIR, "#{name}.log")
-    if File.file?(log_path)
-      worker_files << { 'path' => "#{name}.log", 'size' => File.size(log_path), 'mtime' => File.mtime(log_path).utc.iso8601 }
-    end
-    if File.directory?(wdir)
-      Dir.glob(File.join(wdir, '**', '*'), File::FNM_DOTMATCH).select { |f| File.file?(f) }.sort.each do |f|
-        worker_files << { 'path' => f.delete_prefix("#{O::WORKER_LOG_DIR}/"), 'size' => File.size(f), 'mtime' => File.mtime(f).utc.iso8601 }
-      end
-    end
     art_dir, art_source = change_artifact_dir(name)
-    artifacts = {}
-    if art_dir
-      %w[proposal.md design.md tasks.md repairs.md handoff.md .needs-human].each do |af|
-        full = File.join(art_dir, af)
-        artifacts[af] = File.read(full) if File.file?(full)
-      end
-      Dir.glob(File.join(art_dir, 'specs', '**', 'spec.md')).sort.each do |sf|
-        artifacts[sf.delete_prefix("#{art_dir}/")] = File.read(sf)
-      end
-    end
-    events = if File.file?(O::EVENTS_FILE)
-               File.foreach(O::EVENTS_FILE).filter_map do |line|
-                 e = JSON.parse(line)
-                 e if e['change'] == name
-               rescue JSON::ParserError
-                 nil
-               end
-             else
-               []
-             end
-    b_path = File.join(O::BLOCKED_DIR, "#{name}.json")
-    proposal = Proposals.read(Proposals::FILE).find { |i| i['change_name'] == name }
-    item = backlog_items.find { |i| i['change_name'] == name } || history_items.find { |i| i['change_name'] == name } || proposal
-    wt_root = File.directory?(File.join(O::WORKTREE_BASE, "worker-#{name}")) ? File.join(O::WORKTREE_BASE, "worker-#{name}") : ROOT
-    rules = (File.read(File.join(ROOT, OpenSpecPrompts::RULES)) rescue '')
-    mem_block = (OpenSpecMemory.prompt_block(wt_root, []) rescue '')
-    rendered_prompts = {
-      'plan' => (OpenSpecPrompts.render(ROOT, 'plan', 'change' => name, 'goal' => (item && item['description']).to_s,
-                                                      'memory' => mem_block, 'jev_hint' => '', 'authoring_rules' => rules, 'feedback' => '') rescue nil),
-      'build' => (OpenSpecPrompts.render(ROOT, 'build', 'change' => name, 'branch' => "feat/spec-#{name}",
-                                                        'memory' => mem_block, 'jev_hint' => '', 'authoring_rules' => rules, 'feedback' => '', 'rebuild' => '') rescue nil)
-    }.compact
+    log_path = File.join(O::WORKER_LOG_DIR, "#{name}.log")
+    jev = File.directory?(wdir) ? Dir.glob(File.join(wdir, 'jev-*.state.json')).sort.map { |f| { 'file' => File.basename(f), 'size' => File.size(f) } } : []
+    done, total = task_progress(File.join(art_dir.to_s, 'tasks.md'))
+    lease_file = File.join(O::LOCK_DIR, "#{name}.lock")
+    lease = File.file?(lease_file) ? read_json(lease_file, {}).merge('alive' => alive?(read_json(lease_file, {})['pid'])) : nil
+    item = backlog_items.find { |i| i['change_name'] == name } || history_items.find { |i| i['change_name'] == name } ||
+           Proposals.read(Proposals::FILE).find { |i| i['change_name'] == name }
     {
-      'change_name' => name,
-      'worktree_exists' => File.directory?(File.join(O::WORKTREE_BASE, "worker-#{name}")),
-      'item' => item, 'blocked' => (read_json(b_path) if File.file?(b_path)),
-      'ready_manifest' => read_json(File.join(O::READY_DIR, "#{name}.json")),
-      'artifact_source' => art_source, 'artifacts' => artifacts,
-      'prompts' => prompts, 'rendered_prompts' => rendered_prompts,
-      'jev_states' => jev_states, 'worker_files' => worker_files,
-      'events' => events, 'worker_log' => (File.file?(log_path) ? File.read(log_path) : nil)
+      'change_name' => name, 'state' => entry['state'], 'updated_at' => entry['updated_at'],
+      'worktree_exists' => File.directory?(wt), 'worktree' => (wt if File.directory?(wt)),
+      'item' => item, 'blocked' => blocked_items.find { |b| b['change_name'] == name },
+      'ready_manifest' => read_json(File.join(O::READY_DIR, "#{name}.json")), 'lease' => lease,
+      'artifact_source' => art_source, 'artifacts' => change_artifact_list(art_dir),
+      'progress' => { 'done' => done, 'total' => total },
+      'prompts' => change_prompts(name), 'rendered' => %w[plan build],
+      'jev_states' => jev,
+      'worker_log' => (File.file?(log_path) ? { 'size' => File.size(log_path), 'mtime' => File.mtime(log_path).utc.iso8601 } : nil),
+      'events' => change_events(name),
+      'runs' => read_runs.select { |r| r['change'] == name }.first(25)
     }
+  end
+
+  # One file of a change: a prompt, an artifact, a Jev state, the worker log or a rendered prompt.
+  def change_file(change, kind, file, tail: nil)
+    name = change.to_s.strip
+    return nil unless name.match?(O::CHANGE_NAME)
+
+    file = file.to_s
+    path = case kind
+           when 'prompt'
+             File.join(O::WORKER_LOG_DIR, name, file) if file.match?(/\A[A-Za-z0-9._-]+\.prompt\.md\z/)
+           when 'jev'
+             File.join(O::WORKER_LOG_DIR, name, file) if file.match?(/\A[A-Za-z0-9._-]+\.json\z/)
+           when 'log'
+             File.join(O::WORKER_LOG_DIR, "#{name}.log")
+           when 'artifact'
+             art_dir, = change_artifact_dir(name)
+             File.join(art_dir, file) if art_dir && change_artifact_list(art_dir).any? { |a| a['name'] == file }
+           when 'rendered'
+             begin
+               text = %w[plan build].include?(file) ? rendered_prompt(name, file) : nil
+             rescue StandardError => e
+               return { 'error' => e.message }
+             end
+             return { 'content' => text, 'size' => text.bytesize, 'truncated' => false, 'mtime' => now } if text
+           end
+    path && File.file?(path) ? read_text(path, tail: tail) : nil
   end
 
   def prompt_templates_detail
@@ -415,7 +511,7 @@ module OpenSpecPortal
         else
           OpenSpecPrompts.render(ROOT, role,
                                  'change' => 'example-change', 'goal' => 'Example backlog item description',
-                                 'branch' => 'feat/spec-example-change', 'memory' => OpenSpecMemory.prompt_block(ROOT, []),
+                                 'branch' => 'feat/spec-example-change', 'memory' => OpenSpecMemory.prompt_block(ROOT, capabilities: []),
                                  'jev_hint' => '', 'authoring_rules' => (File.read(File.join(ROOT, OpenSpecPrompts::RULES)) rescue ''),
                                  'feedback' => '', 'rebuild' => '')
         end
@@ -431,115 +527,37 @@ module OpenSpecPortal
     end
   end
 
-  # Structured view of log/ organized by agentic subsystem, with clear context for every artifact.
-  def agentic_observatory
-    cycle_dir = File.join(LOG, 'cycle')
-    cycle_state = read_json(File.join(cycle_dir, 'state.json'), {})
-    cycle_runs = Dir.glob(File.join(cycle_dir, 'cycle-*.log')).sort.reverse.first(25).map do |f|
-      stamp = File.basename(f, '.log').delete_prefix('cycle-')
-      summary = (CycleProgress.cycle_summary(f, nil) rescue { 'stamp' => stamp, 'outcome' => 'unknown' })
-      prompt_rel = "prompt-#{stamp}.md"
-      report_file = Dir.glob(File.join(cycle_dir, 'reports', "*#{stamp}*.md")).reject { |r| File.basename(r).start_with?('visual-') }.first
-      {
-        'stamp' => stamp, 'at' => summary['at'], 'outcome' => summary['outcome'],
-        'strategy' => summary['strategy'], 'engine' => summary['engine'],
-        'log_file' => File.basename(f),
-        'prompt_file' => (prompt_rel if File.file?(File.join(cycle_dir, prompt_rel))),
-        'report_file' => (File.basename(report_file) if report_file)
-      }
-    end
-    visual_sessions = Dir.glob(File.join(cycle_dir, 'visual-*.md')).sort.reverse.first(20).map do |f|
-      stamp = File.basename(f, '.md').delete_prefix('visual-')
-      rep = File.join(cycle_dir, 'reports', "visual-#{stamp}.md")
-      sync = File.join(cycle_dir, "visual-#{stamp}.sync.log")
-      {
-        'stamp' => stamp, 'plan_file' => File.basename(f),
-        'report_file' => ("visual-#{stamp}.md" if File.file?(rep)),
-        'sync_log' => ("visual-#{stamp}.sync.log" if File.file?(sync))
-      }
-    end
-    workers_by_change = changes_catalog.select { |c| c['has_worker_log'] || c['prompt_count'].positive? || c['has_worktree'] }.map do |c|
-      name = c['change_name']
-      wdir = File.join(O::WORKER_LOG_DIR, name)
-      prompts = File.directory?(wdir) ? Dir.glob(File.join(wdir, '*.prompt.md')).sort.map { |p| "#{name}/#{File.basename(p)}" } : []
-      jevs = File.directory?(wdir) ? Dir.glob(File.join(wdir, 'jev-*.state.json')).sort.map { |j| "#{name}/#{File.basename(j)}" } : []
-      { 'change_name' => name, 'state' => c['state'], 'worker_log' => ("#{name}.log" if c['has_worker_log']),
-        'prompts' => prompts, 'jev_states' => jevs }
-    end
-    recent_events = if File.file?(O::EVENTS_FILE)
-                      File.readlines(O::EVENTS_FILE).last(80).reverse.filter_map { |l| JSON.parse(l) rescue nil }
-                    else
-                      []
-                    end
-    blocked_history = Dir.glob(File.join(O::BLOCKED_HISTORY_DIR, '*.json')).sort.reverse.first(20).filter_map do |f|
+  # Self-healing runtime state: engine deferrals, retry counters, healed blocks, conflict rebuilds and the last dispatch.
+  def recovery_state
+    blocked_history = Dir.glob(File.join(O::BLOCKED_HISTORY_DIR, '*.json')).sort.reverse.first(50).filter_map do |f|
       (read_json(f) || {}).merge('file' => File.basename(f))
     end
     rebuilds = Dir.glob(File.join(O::REBUILD_DIR, '*.json')).sort.filter_map do |f|
       (read_json(f) || {}).merge('change_name' => File.basename(f, '.json'))
     end
     {
-      'cycles' => {
-        'context' => 'Scheduled hourly judgment runs (bin/run_cycle.sh in .worktrees/_cycle): each run has its execution log, the rendered cycle prompt and the judgment report.',
-        'state' => cycle_state, 'cron_log' => File.file?(File.join(cycle_dir, 'cron.log')), 'runs' => cycle_runs
-      },
-      'visual_qa' => {
-        'context' => 'Browser verification queue (log/cycle/visual_queue.json) and visual QA sessions (.worktrees/_visual_qa).',
-        'enabled' => VisualQA.enabled?, 'queue' => VisualQA.load, 'sessions' => visual_sessions
-      },
-      'workers' => {
-        'context' => 'Per-change PLAN and BUILD worker executions (log/workers/<change>.log, rendered prompts in log/workers/<change>/*.prompt.md, and Jev gate inputs jev-*.state.json).',
-        'items' => workers_by_change
-      },
-      'events' => {
-        'context' => 'Structured orchestrator event stream (log/events.jsonl): change lifecycle, agent calls with prompt/memory versions, Jev evaluations and merger integrations.',
-        'recent' => recent_events
-      },
-      'recovery_state' => {
-        'context' => 'Self-healing runtime state: engine deferrals (log/deferrals.json), automatic blocked retry counters (log/blocked_retries.json), healed block records (log/blocked/history/), conflict rebuilds (log/rebuilds/) and last dispatch results (log/dispatch_results.json).',
-        'deferrals' => read_json(File.join(LOG, 'deferrals.json'), {}),
-        'blocked_retries' => read_json(O::RETRIES_FILE, {}),
-        'blocked_history' => blocked_history, 'rebuilds' => rebuilds,
-        'dispatch_results' => read_json(File.join(LOG, 'dispatch_results.json'))
-      }
+      'deferrals' => read_json(File.join(LOG, 'deferrals.json'), {}),
+      'blocked_retries' => read_json(O::RETRIES_FILE, {}),
+      'blocked_history' => blocked_history, 'rebuilds' => rebuilds,
+      'dispatch_results' => read_json(File.join(LOG, 'dispatch_results.json'))
     }
   end
 
-  def logs_catalog
-    cycles = Dir.glob(File.join(LOG, 'cycle', 'cycle-*.log')).sort.reverse.first(50).map { |f| File.basename(f) }
-    reports = Dir.glob(File.join(LOG, 'cycle', 'reports', '*.md')).sort.reverse.first(50).map { |f| File.basename(f) }
-    workers = Dir.glob(File.join(O::WORKER_LOG_DIR, '*.log')).sort.reverse.map { |f| File.basename(f) }
-    worker_files = if File.directory?(O::WORKER_LOG_DIR)
-                     Dir.glob(File.join(O::WORKER_LOG_DIR, '**', '*'), File::FNM_DOTMATCH).select { |f| File.file?(f) }.sort.map do |f|
-                       rel = f.delete_prefix("#{O::WORKER_LOG_DIR}/")
-                       { 'path' => rel, 'size' => File.size(f), 'mtime' => File.mtime(f).utc.iso8601 }
-                     end
-                   else
-                     []
-                   end
-    { 'cycles' => cycles, 'reports' => reports, 'workers' => workers, 'worker_files' => worker_files,
-      'observatory' => agentic_observatory }
-  end
+  LOG_NAME = /\A[A-Za-z0-9._-]+\z/
 
-  def read_log_file(kind, name)
-    case kind
-    when 'cycle'
-      return nil unless name.to_s.match?(/\A[A-Za-z0-9._-]+\z/)
-
-      path = File.join(LOG, 'cycle', name)
-    when 'report'
-      return nil unless name.to_s.match?(/\A[A-Za-z0-9._-]+\z/)
-
-      path = File.join(LOG, 'cycle', 'reports', name)
-    when 'worker'
-      return nil if name.to_s.empty?
-
-      cand = File.expand_path(name.to_s, O::WORKER_LOG_DIR)
-      return nil unless cand.start_with?("#{O::WORKER_LOG_DIR}/")
-
-      path = cand
-    when 'events'
-      path = O::EVENTS_FILE
-    end
-    path && File.file?(path) ? File.read(path) : nil
+  # A file under log/ by kind (cycle, report, worker, events, run, job), with its size and mtime; nil when absent.
+  def log_file(kind, name, tail: nil)
+    name = name.to_s
+    path = case kind
+           when 'cycle' then File.join(LOG, 'cycle', name) if name.match?(LOG_NAME)
+           when 'report' then File.join(LOG, 'cycle', 'reports', name) if name.match?(LOG_NAME)
+           when 'worker'
+             cand = File.expand_path(name, O::WORKER_LOG_DIR)
+             cand if !name.empty? && cand.start_with?("#{O::WORKER_LOG_DIR}/")
+           when 'events' then O::EVENTS_FILE
+           when 'run' then File.join(RUNS_DIR, name) if name.match?(/\A[\w-]+\.(prompt\.md|out\.log)\z/)
+           when 'job' then File.join(JOBS_DIR, name) if name.match?(/\A[\w-]+\.out\.log\z/)
+           end
+    path && File.file?(path) ? read_text(path, tail: tail) : nil
   end
 end

@@ -1,9 +1,9 @@
 {
   "name": "openspec-kit",
-  "version": "3.0.0",
-  "source_commit": "10bedc7cc1dc6f83f4184d65d92bda73b10f5e4a",
+  "version": "3.1.0",
+  "source_commit": "0ace249e242ee80c57da6231c6af5ce65aefdb76",
   "source_dirty": false,
-  "built_at": "2026-10-23T06:24:48Z",
+  "built_at": "2026-10-23T20:33:26Z",
   "toolchain": {
     "openspec": "1.14.3",
     "git": "2.56.0",
@@ -26,7 +26,7 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "c830c9b78ca7e79ecffc1ccca938eef6d29227af48f6eab77ca64de110f899b3"
+      "sha256": "db88dd31659a0e46d8239e0ad1d333135311383e4522424bbee68cf06e6093b5"
     },
     "MEMORY.md": {
       "class": "seed",
@@ -62,7 +62,7 @@
     },
     "bin/cycle_progress.rb": {
       "class": "kit",
-      "sha256": "08b88b9bf1fcb9517e71d3b3bb9afae27328918b12e0e6d95e1474de960a8188"
+      "sha256": "243de45d4786510c7c641dca122451685fd103476c1dce1a934f5cb1bb1d261f"
     },
     "bin/cycle_prompt.rb": {
       "class": "kit",
@@ -106,15 +106,63 @@
     },
     "bin/lib/portal_actions.rb": {
       "class": "kit",
-      "sha256": "1c57e4632d409bd3f331b74bde47863bbceaf798b86a77706e7eb70a96f31b3b"
+      "sha256": "f80a12741830b34edaed5206b556bf588af98cecb75b12e49accca5c806b5cb9"
+    },
+    "bin/lib/portal_index.rb": {
+      "class": "kit",
+      "sha256": "84c5eaaa67412ca2aefe0a3702bd0830e8fbac3e37e6ce9c8cd0467b75183646"
     },
     "bin/lib/portal_state.rb": {
       "class": "kit",
-      "sha256": "fec852475a93453500e5317e46d80a9686926a53251f3b9d074ca4897f34884e"
+      "sha256": "23baf0d8c8e650902bbf0e589cd1f13622c5d6f5a71d0ca0bebea196a16e9596"
     },
     "bin/lib/portal_ui.rb": {
       "class": "kit",
-      "sha256": "f049d36ee74770a87dffca5ee2f56e83f9243b572156e50e2b7f6bc8fe20efcf"
+      "sha256": "5993e4cf6816d5127afed226e2d1919caea7da5edda1dca6ed8bca6d9369fd45"
+    },
+    "bin/lib/portal_ui/js/00_core.js": {
+      "class": "kit",
+      "sha256": "b833f08c85c66bfb6c44a28103e6d1d5b211308526ad0789d5d8f7cd4341dbcb"
+    },
+    "bin/lib/portal_ui/js/05_actions.js": {
+      "class": "kit",
+      "sha256": "0e5534114dfeb7136e23ac107a7093f87f9bea9354029704ac6a9ab5ff19a204"
+    },
+    "bin/lib/portal_ui/js/10_dashboard.js": {
+      "class": "kit",
+      "sha256": "0d252df543116bb4abbb26a05c5080ac7e883e14ea0be625febe31a288e24f25"
+    },
+    "bin/lib/portal_ui/js/20_changes.js": {
+      "class": "kit",
+      "sha256": "e87cce187217dd3f00f46a435633610d53a05e5669e30d7c039745277ca37888"
+    },
+    "bin/lib/portal_ui/js/30_runs.js": {
+      "class": "kit",
+      "sha256": "e45d06cad9963974727e766bfcd4eb13be1c31e00953a329eeec54dd12754da3"
+    },
+    "bin/lib/portal_ui/js/40_observe.js": {
+      "class": "kit",
+      "sha256": "15f89f3a16aaa5e06870ee489627499f7db5f02034b32e50cd163bf9eefdf4b4"
+    },
+    "bin/lib/portal_ui/js/50_queue.js": {
+      "class": "kit",
+      "sha256": "6589fa4cd1d1104e567c6754796228652511ba128c5e9e5b641e75092890ade2"
+    },
+    "bin/lib/portal_ui/js/60_system.js": {
+      "class": "kit",
+      "sha256": "f2ed4e087fb988dca8d43ee141bb9a111d5b236039a84279c48f419716ca177c"
+    },
+    "bin/lib/portal_ui/js/70_recent.js": {
+      "class": "kit",
+      "sha256": "1d183796ea2fa773a32f6e0795de5482222dd7add385e214e4ef5eb5b5e799e6"
+    },
+    "bin/lib/portal_ui/portal.css": {
+      "class": "kit",
+      "sha256": "09d4314663f0af1d8d145fed1d56f78b64bdfaf7cb6c598cea17744486813063"
+    },
+    "bin/lib/portal_ui/shell.html": {
+      "class": "kit",
+      "sha256": "a98995b5b3184e9e4b802c3565a2961888c405f047db234f9d88fcb56979d7e1"
     },
     "bin/lib/prompts.rb": {
       "class": "kit",
@@ -146,7 +194,7 @@
     },
     "bin/portal.rb": {
       "class": "kit",
-      "sha256": "614ad10ec591ddaf5496a56eb143bf54e5a318de2e7dd54f861bc8b369cc529f"
+      "sha256": "b7da26d06d37190afe9701eccc9635003cb30b85a5c3c6e8e8def386ae3543e8"
     },
     "bin/prompt_report.rb": {
       "class": "kit",

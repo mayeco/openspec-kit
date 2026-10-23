@@ -14,11 +14,14 @@
 #                                active worktrees (.worktrees/worker-*), agents,
 #                                per-change PLAN and BUILD prompts, and the
 #                                Agentic Observatory view of log/.
-#   - bin/lib/portal_actions.rb: pause/resume, agent pings and prompt runs (on
-#                                the root or inside a change's worktree), health
-#                                checks, background jobs, backlog/quarantine and
-#                                worker worktree operations.
-#   - bin/lib/portal_ui.rb:      the single-page operator interface.
+#   - bin/lib/portal_index.rb:   paginated, filterable views: changes, executions,
+#                                cycles, events, runs, history and the dashboard.
+#   - bin/lib/portal_actions.rb: pause/resume, agent pings, prompt runs (on the root
+#                                or inside a change's worktree) that can be continued,
+#                                re-run or stopped, health checks, background jobs,
+#                                backlog/quarantine and worker worktree operations.
+#   - bin/lib/portal_ui.rb:      the single-page operator interface, one URL per view
+#                                (its pages are in bin/lib/portal_ui/).
 #
 # Listens on 127.0.0.1 by default so only the operator's machine reaches it.
 # Runtime state written by the portal lives under log/portal/ (git-ignored).
@@ -44,6 +47,7 @@ require_relative 'visual_qa'
 require_relative 'jev_report'
 require_relative 'prompt_report'
 require_relative 'lib/portal_state'
+require_relative 'lib/portal_index'
 require_relative 'lib/portal_actions'
 require_relative 'lib/portal_ui'
 
@@ -82,11 +86,36 @@ module OpenSpecPortal
 
         body_params[key.to_s]
       end
+
+      def int(key, default)
+        Integer(param(key).to_s, 10)
+      rescue ArgumentError
+        default
+      end
+
+      def paging = { page: int(:page, 1), per: int(:per, OpenSpecPortal::PER_PAGE) }
+
+      def flag(key) = %w[1 true yes].include?(param(key).to_s.downcase)
     end
 
-    get '/' do
-      content_type :html
-      PORTAL_HTML
+    get '/assets/portal.css' do
+      content_type 'text/css'
+      cache_control :no_store
+      OpenSpecPortal.ui_css
+    end
+
+    get '/assets/portal.js' do
+      content_type 'application/javascript'
+      cache_control :no_store
+      OpenSpecPortal.ui_js
+    end
+
+    get '/api/summary' do
+      json_response(OpenSpecPortal.summary)
+    end
+
+    get '/api/dashboard' do
+      json_response(OpenSpecPortal.dashboard)
     end
 
     get '/api/status' do
@@ -121,7 +150,7 @@ module OpenSpecPortal
     get '/api/agents' do
       json_response(
         'catalog' => OpenSpecPortal.agents_catalog,
-        'runs' => OpenSpecPortal.list_runs
+        'runs' => OpenSpecPortal.list_runs(10, output: false)
       )
     end
 
@@ -146,6 +175,58 @@ module OpenSpecPortal
     get '/api/agents/runs/:id' do
       run = OpenSpecPortal.get_run(params[:id])
       run ? json_response(run) : json_response({ 'error' => 'run not found' }, 404)
+    end
+
+    get '/api/runs' do
+      json_response(OpenSpecPortal.runs_index(status: param(:status), agent: param(:agent), change: param(:change),
+                                              q: param(:q), **paging))
+    end
+
+    get '/api/runs/:id' do
+      run = OpenSpecPortal.get_run(params[:id])
+      run ? json_response(run) : json_response({ 'error' => 'run not found' }, 404)
+    end
+
+    post '/api/runs/:id/continue' do
+      json_response(OpenSpecPortal.continue_run!(params[:id], prompt: param(:prompt), agent: param(:agent),
+                                                              context: !%w[0 false no].include?(param(:context).to_s.downcase),
+                                                              async: !%w[0 false no].include?(param(:async).to_s.downcase)))
+    rescue ArgumentError => e
+      json_response({ 'error' => e.message }, 400)
+    end
+
+    post '/api/runs/:id/rerun' do
+      json_response(OpenSpecPortal.rerun_run!(params[:id], agent: param(:agent), async: true))
+    rescue ArgumentError => e
+      json_response({ 'error' => e.message }, 400)
+    end
+
+    post '/api/runs/:id/stop' do
+      OpenSpecPortal.stop_run!(params[:id])
+      json_response('ok' => true)
+    rescue ArgumentError => e
+      json_response({ 'error' => e.message }, 400)
+    end
+
+    get '/api/jobs' do
+      json_response(OpenSpecPortal.jobs_index(status: param(:status), **paging))
+    end
+
+    get '/api/jobs/:id' do
+      job = OpenSpecPortal.get_job(params[:id])
+      job ? json_response(job) : json_response({ 'error' => 'job not found' }, 404)
+    end
+
+    post '/api/jobs/:id/stop' do
+      OpenSpecPortal.stop_job!(params[:id])
+      json_response('ok' => true)
+    rescue ArgumentError => e
+      json_response({ 'error' => e.message }, 400)
+    end
+
+    get '/api/executions' do
+      json_response(OpenSpecPortal.executions_index(kind: param(:kind), q: param(:q), change: param(:change),
+                                                    page: int(:page, 1), per: int(:per, 50)))
     end
 
     post '/api/health' do
@@ -238,11 +319,16 @@ module OpenSpecPortal
     end
 
     get '/api/backlog' do
-      json_response(
-        'backlog' => OpenSpecPortal.backlog_items,
-        'history' => OpenSpecPortal.history_items.last(30).reverse,
-        'dry_run' => OpenSpecPortal.dry_run_queue
-      )
+      json_response('backlog' => OpenSpecPortal.backlog_items)
+    end
+
+    # What the dispatcher would start next and why each pending item waits (a subprocess: a few seconds).
+    get '/api/plan' do
+      json_response(OpenSpecPortal.dry_run_queue)
+    end
+
+    get '/api/history' do
+      json_response(OpenSpecPortal.history_index(q: param(:q), **paging))
     end
 
     post '/api/backlog' do
@@ -344,25 +430,64 @@ module OpenSpecPortal
     end
 
     get '/api/logs' do
-      kind = param(:kind)
-      name = param(:name)
-      if kind
-        content = OpenSpecPortal.read_log_file(kind, name || 'events.jsonl')
-        return json_response({ 'error' => 'log not found' }, 404) unless content
+      kind = param(:kind).to_s
+      return json_response({ 'error' => 'kind is required (cycle, report, worker, events, run, job)' }, 400) if kind.empty?
 
-        json_response('kind' => kind, 'name' => name, 'content' => content)
-      else
-        json_response(OpenSpecPortal.logs_catalog.merge('jobs' => OpenSpecPortal.list_jobs))
-      end
+      tail = int(:tail, 300_000)
+      file = OpenSpecPortal.log_file(kind, param(:name) || 'events.jsonl', tail: tail)
+      return json_response({ 'error' => 'log not found' }, 404) unless file
+
+      json_response(file.merge('kind' => kind, 'name' => param(:name)))
+    end
+
+    get '/api/logs/raw' do
+      file = OpenSpecPortal.log_file(param(:kind).to_s, param(:name) || 'events.jsonl')
+      halt 404, 'log not found' unless file
+
+      content_type 'text/plain; charset=utf-8'
+      attachment File.basename(param(:name).to_s) if flag(:download)
+      file['content']
+    end
+
+    get '/api/events' do
+      json_response(OpenSpecPortal.events_index(event: param(:event), change: param(:change), q: param(:q), **paging))
+    end
+
+    get '/api/cycles' do
+      json_response(OpenSpecPortal.cycles_index(q: param(:q), **paging))
+    end
+
+    get '/api/cycles/:stamp' do
+      detail = OpenSpecPortal.cycle_detail(params[:stamp])
+      detail ? json_response(detail) : json_response({ 'error' => 'cycle not found' }, 404)
+    end
+
+    get '/api/visual' do
+      json_response(OpenSpecPortal.visual_overview(**paging))
+    end
+
+    get '/api/recovery' do
+      json_response(OpenSpecPortal.recovery_state)
+    end
+
+    get '/api/prompts' do
+      json_response('templates' => OpenSpecPortal.prompt_templates_detail)
     end
 
     get '/api/changes' do
-      json_response('changes' => OpenSpecPortal.changes_catalog, 'templates' => OpenSpecPortal.prompt_templates_detail)
+      json_response(OpenSpecPortal.changes_index(q: param(:q), state: param(:state), sort: param(:sort), **paging))
     end
 
     get '/api/changes/:change_name' do
       detail = OpenSpecPortal.change_detail(params[:change_name])
       detail ? json_response(detail) : json_response({ 'error' => 'change not found' }, 404)
+    end
+
+    get '/api/changes/:change_name/file' do
+      file = OpenSpecPortal.change_file(params[:change_name], param(:kind).to_s, param(:name).to_s, tail: int(:tail, 300_000))
+      return json_response(file) if file && !file.key?('error')
+
+      json_response({ 'error' => file ? file['error'] : 'file not found' }, 404)
     end
 
     post '/api/changes/:change_name/agent' do
@@ -395,6 +520,15 @@ module OpenSpecPortal
       json_response(OpenSpecPortal.reset_worker!(params[:change_name]))
     rescue ArgumentError => e
       json_response({ 'error' => e.message }, 400)
+    end
+
+    # Every other path gets the shell, last so that no route above is shadowed: the browser picks the page from the URL.
+    get '/*' do
+      pass if request.path_info.start_with?('/api/', '/assets/')
+
+      content_type :html
+      cache_control :no_store
+      OpenSpecPortal.ui_shell
     end
   end
 end

@@ -67,7 +67,11 @@ module CycleProgress
     raise ArgumentError, "--since takes 90m, 24h, 7d or a time, not #{text.inspect}"
   end
 
-  def stamp_time(stamp) = Time.strptime(stamp, '%Y%m%dT%H%M%SZ').utc
+  # A kit stamp (20261023T170001Z) is UTC, whatever the timezone of the machine reading it.
+  def stamp_time(stamp)
+    m = stamp.to_s.match(/\A(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\z/) or raise ArgumentError, "not a stamp: #{stamp.inspect}"
+    Time.utc(*m.captures.map(&:to_i))
+  end
 
   def events(since)
     path = File.join(LOG, 'events.jsonl')

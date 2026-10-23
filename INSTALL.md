@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/mayeco/openspec-kit/master/install.
 Or clone a release tag directly:
 
 ```bash
-git clone --branch v<version> <release-repository-url> openspec-kit    # the latest tag, for example v3.0.0
+git clone --branch v<version> <release-repository-url> openspec-kit    # the latest tag, for example v3.1.0
 ```
 
 A release holds `bin/` (the scripts, `bin/openspec-kit`, `bin/install.sh` and `bin/portal.rb` included), `config/` (the templates and the default settings, `agents.yaml` among them: the install writes the agents and roles you select into it), `skills/` (the kit's skills, installed per agent), `MANIFEST.json` and the placeholder files of a new application.
