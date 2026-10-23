@@ -51,7 +51,9 @@ module OpenSpecAgents
     'cline' => { 'label' => 'Cline', 'tool' => 'cline', 'skills' => '.cline/skills' },
     'pi' => { 'label' => 'pi', 'tool' => 'pi', 'skills' => '.pi/skills' },
     'omp' => { 'label' => 'oh-my-pi, a fork of pi', 'tool' => 'oh-my-pi', 'skills' => '.omp/skills' },
-    'crush' => { 'label' => "Charm's Crush", 'tool' => 'crush', 'skills' => '.crush/skills' }
+    'crush' => { 'label' => "Charm's Crush", 'tool' => 'crush', 'skills' => '.crush/skills' },
+    'cursor-agent' => { 'label' => 'Cursor Agent', 'tool' => 'cursor', 'skills' => '.cursor/skills' },
+    'zcode' => { 'label' => 'ZCode', 'tool' => 'zcode', 'skills' => '.zcode/skills' }
   }.freeze
   ROLES = {
     'plan' => 'writes the OpenSpec artifacts of each backlog item',
@@ -262,7 +264,7 @@ module OpenSpecAgents
                '# all: agents may run any command (servers, curl, browsers, test tools), except the git',
                '# commands only the scripts run (commit, push, rebase, reset, checkout, switch).',
                '# restricted: Claude Code may only read, edit, run openspec, inspect git, run the gates',
-               '# and ask Jev; Codex and Antigravity (agy) keep their sandbox; Kilo and omp follow their own approval settings; pi loads no project extensions. Hermes, Copilot, OpenCode, Cline and Crush ignore it.',
+               '# and ask Jev; Codex, Antigravity (agy) and Cursor Agent (cursor-agent) keep their sandbox; Kilo, omp and ZCode (zcode) follow their own approval settings; pi loads no project extensions. Hermes, Copilot, OpenCode, Cline and Crush ignore it.',
                "permissions: #{permissions}",
                "# Arguments added to an agent's command line on every call, besides the kit's own:",
                '# a model, a provider, a profile. A string is split as a shell would split it; a list',

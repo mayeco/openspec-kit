@@ -15,7 +15,8 @@
 set -o pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
-export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
+export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$PATH"
+# GNU timeout is standard on Linux (coreutils); macOS ships without it or installs it as gtimeout.
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes
 # (OPENSPEC_PING_SECONDS, for one manual run).
@@ -134,8 +135,10 @@ probe agy      agy -p "Reply with the single word: pong" --print-timeout 170s @E
 probe kilo     kilo run --agent code @EXTRA@ "Reply with the single word: pong"
 probe cline    cline --yolo @EXTRA@ "Reply with the single word: pong"
 probe pi       pi -p --no-session @EXTRA@ -- "Reply with the single word: pong"
-probe omp      omp -p --no-session @EXTRA@ "Reply with the single word: pong"
-probe crush    crush run --quiet @EXTRA@ "Reply with the single word: pong"
+probe omp          omp -p --no-session @EXTRA@ "Reply with the single word: pong"
+probe crush        crush run --quiet @EXTRA@ "Reply with the single word: pong"
+probe cursor-agent cursor-agent -p --trust @EXTRA@ "Reply with the single word: pong"
+probe zcode        zcode -p "Reply with the single word: pong" @EXTRA@
 
 # Every role must have a working engine among its list (stub: the kit's own tests).
 # agent_exec.sh falls back along the list, so a dead fallback is only a warning.
@@ -161,7 +164,7 @@ JUDGE=off   # ok | off | missing | invalid | auth | drift | unavailable
 if [ "${JEV_DISABLED:-0}" = 1 ]; then
   echo "  jev: disabled (JEV_DISABLED=1)"
 elif ! command -v jev >/dev/null 2>&1; then
-  echo "  jev: not installed (brew install shaharia-lab/tap/jev)"; JUDGE=missing
+  echo "  jev: not installed (see INSTALL.md)"; JUDGE=missing
 elif [ ! -f config/templates/jev/canary.yaml ]; then
   echo "  jev: config/templates/jev/ not installed; skipped"
 else

@@ -4,31 +4,41 @@ The kit lets AI agents specify, build, verify and integrate an application with 
 
 ## 1. Requirements
 
-| Tool | Why | Install (macOS) |
+| Tool | Why | Install (Linux / macOS) |
 | :--- | :--- | :--- |
-| git | Everything is git: worktrees, submodules, the merger's pushes | `xcode-select --install` |
-| Ruby ≥ 3.1 | The dispatcher, the merger and the installer | `brew install ruby` |
-| OpenSpec CLI (verified 1.14.1) | Specifications, validation, archive | `brew install openspec` |
-| At least one agent CLI, logged in | Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), Hermes (`hermes`), OpenCode (`opencode`), Google Antigravity (`agy`), Kilo Code (`kilo`: `npm install -g @kilocode/cli`), Cline (`cline`: `npm install -g cline`, then `cline auth`), pi (`pi`: `curl -fsSL https://pi.dev/install.sh | sh`, then `/login` inside it or a provider's API key), oh-my-pi (`omp`: `brew install omp`, then `omp login`), Crush (`crush`: `brew install charmbracelet/tap/crush`, then a provider in its first interactive run or `crush login`) | Their own installers |
-| GNU timeout (recommended) | Bounds every agent call and preflight ping, with KILL after TERM for a CLI that ignores it; without it, the kit's `bin/lib/bounded.rb` does the same | `brew install coreutils` |
-| The version managers your repositories use | A repository's `env_script` loads the version it pins: rbenv or RVM, nvm or fnm, pyenv, goenv (`.go-version`), mise or asdf | `brew install goenv`, ... |
-| Jev (optional) | A calibrated judge for plans, failures and repairs, test coverage, risk and proposals | `brew install shaharia-lab/tap/jev`, then `jev auth login` |
+| git | Everything is git: worktrees, submodules, the merger's pushes | `apt install git` / `dnf install git` / `xcode-select --install` |
+| Ruby ≥ 3.1 | The dispatcher, the merger, the installer and the Sinatra web portal (`bin/portal.rb`; `gem install sinatra`) | `apt install ruby-full` / `dnf install ruby` / `mise` / `rbenv` / `brew install ruby` |
+| OpenSpec CLI (verified 1.14.1) | Specifications, validation, archive | `npm install -g @fission-ai/openspec` / `brew install openspec` |
+| At least one agent CLI, logged in | Claude Code (`claude`), Codex (`codex`), GitHub Copilot (`copilot`), Hermes (`hermes`), OpenCode (`opencode`), Google Antigravity (`agy`), Kilo Code (`kilo`: `npm install -g @kilocode/cli`), Cline (`cline`: `npm install -g cline`, then `cline auth`), pi (`pi`: `curl -fsSL https://pi.dev/install.sh | sh`, then `/login` inside it or a provider's API key), oh-my-pi (`omp`), Crush (`crush`), Cursor Agent (`cursor-agent`, then `cursor-agent login` or `CURSOR_API_KEY`), ZCode (`zcode`, then `zcode login`) | Their own installers (`curl ... \| sh`, `npm install -g`, or your package manager) |
+| GNU timeout | Bounds every agent call and preflight ping, with KILL after TERM for a CLI that ignores it; included in `coreutils` on Linux, optional on macOS (`bin/lib/bounded.rb` does the same without it) | Included on Linux (`coreutils`); `brew install coreutils` on macOS |
+| The version managers your repositories use | A repository's `env_script` loads the version it pins: mise, asdf, rbenv, RVM or chruby, nvm or fnm, pyenv, goenv (`.go-version`), cargo | Their own installers (`~/.local/bin`, `~/.rbenv`, `~/.nvm`, `~/.pyenv`, `~/.goenv`, `~/.cargo`) |
+| Jev (optional) | A calibrated judge for plans, failures and repairs, test coverage, risk and proposals | Official release binary or `brew install shaharia-lab/tap/jev`, then `jev auth login` |
 
 ## 2. Get a release
 
+Install the `openspec-kit` CLI into `~/.local/bin/openspec-kit` (it clones the release repository into `~/.openspec-kit`):
+
 ```bash
-git clone --branch v<version> <release-repository-url> openspec-kit    # the latest tag, for example v2.5.0
+curl -fsSL https://raw.githubusercontent.com/mayeco/openspec-kit/master/install.sh | sh
 ```
 
-A release holds `bin/` (the scripts, `bin/install.sh` included), `config/` (the templates and the default settings, `agents.yaml` among them: the install writes the agents and roles you select into it), `skills/` (the kit's skills, installed per agent), `MANIFEST.json` and the placeholder files of a new application.
+Or clone a release tag directly:
+
+```bash
+git clone --branch v<version> <release-repository-url> openspec-kit    # the latest tag, for example v3.0.0
+```
+
+A release holds `bin/` (the scripts, `bin/openspec-kit`, `bin/install.sh` and `bin/portal.rb` included), `config/` (the templates and the default settings, `agents.yaml` among them: the install writes the agents and roles you select into it), `skills/` (the kit's skills, installed per agent), `MANIFEST.json` and the placeholder files of a new application.
 
 ## 3. Install into the application
 
 ```bash
+openspec-kit init ../xyz --agents claude,hermes --plan claude --build claude --cycle hermes
+# or, from a direct clone of the release:
 openspec-kit/bin/install.sh init ../xyz --agents claude,hermes --plan claude --build claude --cycle hermes
 ```
 
-- `--agents`: the agent CLIs the application uses: `claude`, `codex`, `copilot`, `hermes`, `opencode`, `agy` (Google Antigravity), `kilo` (Kilo Code), `cline` (Cline), `pi` (pi), `omp` (oh-my-pi), `crush` (Crush).
+- `--agents`: the agent CLIs the application uses: `claude`, `codex`, `copilot`, `hermes`, `opencode`, `agy` (Google Antigravity), `kilo` (Kilo Code), `cline` (Cline), `pi` (pi), `omp` (oh-my-pi), `crush` (Crush), `cursor-agent` (Cursor Agent), `zcode` (ZCode).
 - `--plan`, `--build`, `--cycle`: the agents of each role. **Plan** writes the OpenSpec artifacts of each backlog item, **build** implements them, **cycle** runs the scheduled judgment (verification, exploration, triage, memory). A role is one agent (`--cycle hermes`) or several in order of preference (`--build claude,hermes`): an agent that fails (out of quota, not logged in, timed out) is tried again `limits.agent_retries` times (`config/pipeline.yaml`; never after a usage limit, which lasts hours), then the next one runs and continues from what the failed attempts left, told about it in its prompt. A role only falls back to the agents you list. When every agent of a role fails without changing anything, the change is deferred, not blocked: it runs again in the next dispatch, once the preflight finds an agent working. With one agent it takes every role and nothing is asked; with more, a role you leave out is asked on a terminal.
 - `--order fallback|random|spread`: `order` in `config/agents.yaml` says where each call starts: `fallback` (the default) always starts with the role's first agent; `random` starts with any of them, then tries the others in the order listed, so the calls spread over the agents' quotas instead of draining the first one's. With `claude,opencode,hermes,kilo`, a random call may start with opencode and fall back to claude, hermes and kilo. Each call draws on its own, so calls that run at once can land on the same agent. `spread` draws only among the agents the fewest running calls use: with three changes building at once and four agents, the three go to three different agents (the agent each call runs is registered in `log/agents_in_use/` until it ends; `bash bin/cycle_status.sh` shows them). Change it later with `ruby bin/kit_config.rb set agents.order spread`.
 - The target may be a new directory or an existing repository. The install refuses a target that already has the kit (use `upgrade`) and kit files that already exist with other content (unless `--force`).
@@ -75,7 +85,7 @@ xyz/
 | `openspec-kit-config` | Any agent you ask about a setting | Explain every setting and change one safely, from `bin/kit_config.rb` |
 | `openspec-propose`, `openspec-apply-change`, ... | The plan and build agents | OpenSpec's own workflows, generated by `openspec init` |
 
-They go to `.agents/skills/`, the skills directory agents share, and a copy goes to the directory of each other selected agent (`.claude/skills/`, `.github/skills/`, `.hermes/skills/`, `.opencode/skills/`, `.kilocode/skills/`, `.cline/skills/`, `.pi/skills/`, `.omp/skills/`, `.crush/skills/`); Codex and Antigravity read `.agents/skills/` itself. To add or remove an agent later, see section 9.
+They go to `.agents/skills/`, the skills directory agents share, and a copy goes to the directory of each other selected agent (`.claude/skills/`, `.github/skills/`, `.hermes/skills/`, `.opencode/skills/`, `.kilocode/skills/`, `.cline/skills/`, `.pi/skills/`, `.omp/skills/`, `.crush/skills/`, `.cursor/skills/`, `.zcode/skills/`); Codex and Antigravity read `.agents/skills/` itself. To add or remove an agent later, see section 9.
 
 ## 4. Make it yours
 
@@ -163,7 +173,15 @@ ruby bin/cycle_progress.rb        # how it is going: now, the last 24 hours, pen
 
 ## 9. Upgrade, change agents
 
-From a checkout of the new release tag:
+With `~/.local/bin/openspec-kit`, pull the latest release into `~/.openspec-kit` and update the application:
+
+```bash
+openspec-kit self-upgrade                                                    # pull ~/.openspec-kit
+openspec-kit update ../xyz                                                   # move to the new release
+openspec-kit update ../xyz --agents claude,copilot --cycle copilot           # or change the agents
+```
+
+Or from a direct checkout of the new release tag:
 
 ```bash
 git -C openspec-kit fetch --tags && git -C openspec-kit checkout v<new>

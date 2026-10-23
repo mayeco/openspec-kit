@@ -4,7 +4,7 @@ Two scheduled jobs keep an application moving. Both run from the application's r
 
 | Job | Runs | Needs | Schedule it with |
 | :--- | :--- | :--- | :--- |
-| **Cycle**, hourly | `bash bin/run_cycle.sh --detach`: preflight, merge, sync, the headless judgment (the `cycle` agent of `config/agents.yaml`), proposals, record, dispatch | A shell. The script starts the agents itself | **crontab** or launchd (recommended), or a task of the Claude or Hermes app |
+| **Cycle**, hourly | `bash bin/run_cycle.sh --detach`: preflight, merge, sync, the headless judgment (the `cycle` agent of `config/agents.yaml`), proposals, record, dispatch | A shell. The script starts the agents itself | **crontab** or a **systemd** user timer on Linux (recommended), launchd on macOS, or a task of the Claude or Hermes app |
 | **Visual QA session**, every 1 to 3 hours | `bash bin/visual_qa.sh begin`, the agent tests the application in a browser, `bash bin/visual_qa.sh end` | An agent app that can drive a browser, open, on a computer that is awake | A task of the Claude app or of Hermes. Not crontab: a headless agent has no browser |
 
 ## Where the prompts are
@@ -56,10 +56,44 @@ The same files are in the skills directory of every selected agent (`.claude/ski
    ```
 
 Notes:
-- The script fixes `PATH` itself (`OPENSPEC_PATH_PREFIX`, default `/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin`) and runs without a locale, so cron's minimal environment is enough. Each agent CLI must already be logged in for your user.
+- The script fixes `PATH` itself (`OPENSPEC_PATH_PREFIX`, default `$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin`) and runs without a locale, so cron's minimal environment is enough. Each agent CLI must already be logged in for your user.
 - `ruby bin/app_setup.rb status` prints this line with the application's real path.
 - `--detach` returns at once; the cycle runs in its own session and writes `log/cycle/cycle-<stamp>.log`. A cycle that fires while another one judges prints `cycle: already running` and exits.
 - **macOS**: if the application lives under `~/Documents`, `~/Desktop`, `~/Downloads` or iCloud Drive, give `/usr/sbin/cron` **Full Disk Access** (System Settings › Privacy & Security). Cron does not run while the computer sleeps.
+
+### Alternative on Linux: systemd user timer
+
+`systemd --user` runs on every modern Linux distribution and (`Persistent=true`) catches up after a reboot or suspend. Create `~/.config/systemd/user/openspec-cycle.service`:
+
+```ini
+[Unit]
+Description=OpenSpec autonomous cycle for xyz
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/xyz
+ExecStart=/bin/bash -c 'mkdir -p log/cycle && exec /bin/bash bin/run_cycle.sh --detach >> log/cycle/cron.log 2>&1'
+```
+
+And `~/.config/systemd/user/openspec-cycle.timer`:
+
+```ini
+[Unit]
+Description=Hourly OpenSpec autonomous cycle for xyz
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now openspec-cycle.timer   # start
+systemctl --user disable --now openspec-cycle.timer  # stop
+```
 
 ### Alternative on macOS: launchd
 
@@ -146,6 +180,14 @@ Neither has a scheduler. Use crontab (section 1). If `roles.cycle` names `pi` or
 ### Crush (`crush`)
 
 Crush has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `crush`, the script calls `crush run` for the judgment by itself. Configure a provider once in an interactive `crush` session (or export its API key where the scheduler runs).
+
+### Cursor Agent (`cursor-agent`)
+
+Cursor Agent has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `cursor-agent`, the script calls `cursor-agent -p` for the judgment by itself. Sign in once (`cursor-agent login`) or export `CURSOR_API_KEY` where the scheduler runs.
+
+### ZCode (`zcode`)
+
+ZCode has no scheduler of its own. Use crontab (section 1). If `roles.cycle` names `zcode`, the script calls `zcode -p` for the judgment by itself. Sign in once (`zcode login`) where the scheduler runs.
 
 ## 3. The visual QA session
 

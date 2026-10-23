@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# bin/openspec-kit - CLI entry point installed into ~/.local/bin/openspec-kit
+# ==============================================================================
+# Installed by:
+#   curl -fsSL https://raw.githubusercontent.com/mayeco/openspec-kit/master/install.sh | sh
+# which clones the deliverable repository into ~/.openspec-kit and writes the
+# wrapper ~/.local/bin/openspec-kit:
+#   #!/bin/sh
+#   exec "$HOME/.openspec-kit/bin/openspec-kit" "$@"
+#
+# Commands:
+#   openspec-kit init <app-dir> --agents LIST [--plan A --build A --cycle A] [--order ORDER] [--force]
+#   openspec-kit update|upgrade <app-dir> [--agents LIST ...] [--force]
+#   openspec-kit self-upgrade [<tag-or-branch>]
+#   openspec-kit verify [<app-dir>]
+#   openspec-kit portal [--port 4567] [--bind 127.0.0.1]
+#   openspec-kit version
+# Environment overrides (for tests or custom locations):
+#   OPENSPEC_KIT_HOME     checkout of the release repository (default: ~/.openspec-kit)
+#   OPENSPEC_KIT_BIN_DIR  directory on PATH for the wrapper (default: ~/.local/bin)
+#   OPENSPEC_KIT_REPO     git remote URL (default: https://github.com/mayeco/openspec-kit.git)
+set -euo pipefail
+
+SELF_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_HOME="${OPENSPEC_KIT_HOME:-$HOME/.openspec-kit}"
+BIN_DIR="${OPENSPEC_KIT_BIN_DIR:-$HOME/.local/bin}"
+REPO_URL="${OPENSPEC_KIT_REPO:-https://github.com/mayeco/openspec-kit.git}"
+
+# When run from a release checkout (such as ~/.openspec-kit/bin/openspec-kit),
+# use that checkout; when run from an application's bin/, use $KIT_HOME for
+# install, update and self-upgrade.
+if [ -f "$SELF_ROOT/MANIFEST.json" ]; then
+  RELEASE="$SELF_ROOT"
+else
+  RELEASE="$KIT_HOME"
+fi
+
+write_shim() { # <kit-home> <bin-dir>
+  local home="$1" dir="$2" shim="$2/openspec-kit"
+  mkdir -p "$dir"
+  cat > "$shim" <<EOF
+#!/bin/sh
+exec "$home/bin/openspec-kit" "\$@"
+EOF
+  chmod +x "$shim"
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  init|install)
+    if [ ! -f "$RELEASE/MANIFEST.json" ]; then
+      echo "openspec-kit: no release found at $RELEASE (run 'openspec-kit self-upgrade' first)" >&2
+      exit 2
+    fi
+    exec ruby "$RELEASE/bin/openspec_kit.rb" init "$@" --source "$RELEASE"
+    ;;
+  upgrade|update)
+    if [ ! -f "$RELEASE/MANIFEST.json" ]; then
+      echo "openspec-kit: no release found at $RELEASE (run 'openspec-kit self-upgrade' first)" >&2
+      exit 2
+    fi
+    exec ruby "$RELEASE/bin/openspec_kit.rb" upgrade "$@" --source "$RELEASE"
+    ;;
+  self-upgrade|self-update)
+    target_ref="${1:-}"
+    if [ -d "$KIT_HOME/.git" ]; then
+      git -C "$KIT_HOME" fetch --tags --prune --quiet origin
+      if [ -n "$target_ref" ]; then
+        git -C "$KIT_HOME" checkout --quiet "$target_ref"
+        if git -C "$KIT_HOME" symbolic-ref -q HEAD >/dev/null 2>&1; then
+          git -C "$KIT_HOME" merge --ff-only --quiet "origin/$target_ref" 2>/dev/null || true
+        fi
+      else
+        branch="$(git -C "$KIT_HOME" symbolic-ref -q --short HEAD || true)"
+        if [ -n "$branch" ]; then
+          git -C "$KIT_HOME" merge --ff-only --quiet "origin/$branch"
+        else
+          latest="$(git -C "$KIT_HOME" tag -l 'v*' --sort=-v:refname | head -1)"
+          git -C "$KIT_HOME" checkout --quiet "${latest:-origin/HEAD}"
+        fi
+      fi
+    else
+      rm -rf "$KIT_HOME"
+      mkdir -p "$(dirname "$KIT_HOME")"
+      if [ -n "$target_ref" ]; then
+        git clone --quiet --branch "$target_ref" "$REPO_URL" "$KIT_HOME"
+      else
+        git clone --quiet "$REPO_URL" "$KIT_HOME"
+      fi
+    fi
+    write_shim "$KIT_HOME" "$BIN_DIR"
+    ver="$(ruby -rjson -e 'puts((JSON.parse(File.read(ARGV[0]))["version"] rescue "unknown"))' "$KIT_HOME/MANIFEST.json" 2>/dev/null || echo unknown)"
+    echo "openspec-kit: $KIT_HOME is at v$ver ($BIN_DIR/openspec-kit)"
+    ;;
+  verify)
+    target="${1:-.}"
+    if [ -f "$target/bin/openspec_kit.rb" ]; then
+      exec ruby "$target/bin/openspec_kit.rb" verify "$target"
+    else
+      exec ruby "$SELF_ROOT/bin/openspec_kit.rb" verify "$target"
+    fi
+    ;;
+  portal)
+    if [ -f "./bin/portal.rb" ]; then
+      exec ruby "./bin/portal.rb" "$@"
+    else
+      exec ruby "$SELF_ROOT/bin/portal.rb" "$@"
+    fi
+    ;;
+  version|-v|--version)
+    ver="$(ruby -rjson -e 'puts((JSON.parse(File.read(ARGV[0]))["version"] rescue "unknown"))' "$RELEASE/MANIFEST.json" 2>/dev/null || echo unknown)"
+    echo "openspec-kit v$ver ($RELEASE)"
+    ;;
+  *)
+    sed -n '2,23p' "$0"
+    exit 2
+    ;;
+esac

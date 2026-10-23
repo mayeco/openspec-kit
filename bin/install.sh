@@ -2,14 +2,16 @@
 # ==============================================================================
 # bin/install.sh - Install, upgrade or verify the OpenSpec orchestration kit
 # ==============================================================================
-# From a checkout of the release tag you want (it holds MANIFEST.json):
+# From a checkout of the release tag you want (it holds MANIFEST.json), or
+# through `~/.local/bin/openspec-kit`:
 #   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]] [--order fallback|random]
-#   bin/install.sh upgrade <app-dir> [--agents LIST --plan A[,B] ...] [--force]
+#   bin/install.sh upgrade|update <app-dir> [--agents LIST --plan A[,B] ...] [--force]
+#   bin/install.sh self-upgrade [<tag-or-branch>]
 #   bin/install.sh verify <app-dir>
 # Inside an application, where it arrives with the rest of bin/, only
 # `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
 #
-# Agents: claude, codex, copilot, hermes, opencode, agy, kilo, cline, pi, omp, crush. init installs the kit (bin/,
+# Agents: claude, codex, copilot, hermes, opencode, agy, kilo, cline, pi, omp, crush, cursor-agent, zcode. init installs the kit (bin/,
 # config/templates/) and its skills in .agents/skills/, the directory agents
 # share, plus a copy for each other selected agent. It records the agents and, per role
 # (plan, build, cycle), the agent that runs it or several in order of preference
@@ -25,12 +27,22 @@
 set -euo pipefail
 RELEASE="$(cd "$(dirname "$0")/.." && pwd)"
 case "${1:-}" in
-  init|upgrade)
+  init|install)
+    shift
     if [ ! -f "$RELEASE/MANIFEST.json" ]; then
-      echo "install.sh: $RELEASE is not a release (no MANIFEST.json): run $1 from a checkout of the release tag" >&2
+      echo "install.sh: $RELEASE is not a release (no MANIFEST.json): run init from a checkout of the release tag" >&2
       exit 2
     fi
-    exec ruby "$RELEASE/bin/openspec_kit.rb" "$@" --source "$RELEASE" ;;
+    exec ruby "$RELEASE/bin/openspec_kit.rb" init "$@" --source "$RELEASE" ;;
+  upgrade|update)
+    shift
+    if [ ! -f "$RELEASE/MANIFEST.json" ]; then
+      echo "install.sh: $RELEASE is not a release (no MANIFEST.json): run upgrade from a checkout of the release tag" >&2
+      exit 2
+    fi
+    exec ruby "$RELEASE/bin/openspec_kit.rb" upgrade "$@" --source "$RELEASE" ;;
+  self-upgrade|self-update)
+    exec bash "$RELEASE/bin/openspec-kit" "$@" ;;
   verify) exec ruby "$RELEASE/bin/openspec_kit.rb" "$@" ;;
-  *) sed -n '2,24p' "$0"; exit 2 ;;
+  *) sed -n '2,25p' "$0"; exit 2 ;;
 esac

@@ -134,7 +134,7 @@ module KitConfig
             'bin/agent_exec.sh, on every agent call; bin/check_ai_engines.sh',
             change: 'edit config/agents.yaml by hand, one line per agent under extra_args, then check'),
     setting('agents.permissions', :enum, OpenSpecAgents::DEFAULT_PERMISSIONS,
-            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex and agy sandboxed, kilo and omp on their own approval settings, pi without project extensions (hermes, copilot, opencode, cline and crush ignore it)',
+            'all: any command but the git commands only the scripts run; restricted: Claude Code on an allowlist, Codex, agy and cursor-agent sandboxed, kilo, omp and zcode on their own approval settings, pi without project extensions (hermes, copilot, opencode, cline and crush ignore it)',
             'bin/agent_exec.sh, on every agent call', values: OpenSpecAgents::PERMISSIONS),
     *PIPELINE.map { |key, (means, read_by)| setting("pipeline.#{key}", :pipeline, OpenSpecSettings::KEYS.fetch(key)[1], "#{means} (#{OpenSpecSettings::KEYS.fetch(key)[0]} overrides it for one run)", read_by) },
     setting('cycle.qa_time_budget_minutes', :int, 45, 'minutes the judgment may spend verifying and exploring',
@@ -195,7 +195,7 @@ module KitConfig
 
   ENV_KNOBS = [
     *OpenSpecSettings::KEYS.map { |key, (var, _)| [var, nil, "overrides pipeline.#{key} of config/pipeline.yaml"] },
-    ['OPENSPEC_PATH_PREFIX', '/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin', 'prepended to PATH by the scheduled scripts'],
+    ['OPENSPEC_PATH_PREFIX', '$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin', 'prepended to PATH by the scheduled scripts'],
     ['AGENT_ENGINE_PLAN, AGENT_ENGINE_BUILD, AGENT_ENGINE_CYCLE, AGENT_ENGINE', 'roles of config/agents.yaml', 'the agent of a role'],
     ['AGENT_ORDER', 'order of config/agents.yaml', 'fallback | random'],
     ['AGENT_PERMISSIONS', 'permissions of config/agents.yaml', 'all | restricted'],

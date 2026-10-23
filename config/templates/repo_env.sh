@@ -17,7 +17,7 @@
 # merger blocks a change that touches it, like repo.config.yaml itself.
 
 openspec_repo_env() {
-  local had_u=0 want gemset
+  local had_u=0 want gemset chruby_sh
   case $- in *u*) had_u=1; set +u ;; esac
 
   # Ruby: .ruby-version (e.g. ruby-3.4.1) and an optional RVM .ruby-gemset.
@@ -25,16 +25,23 @@ openspec_repo_env() {
   [ -f .ruby-version ] && want="$(tr -d '[:space:]' < .ruby-version)"
   [ -f .ruby-gemset ] && gemset="$(tr -d '[:space:]' < .ruby-gemset)"
   if [ -n "$want" ]; then
+    [ -d "$HOME/.rbenv/bin" ] && PATH="$HOME/.rbenv/bin:$PATH"
     if [ -s "$HOME/.rvm/scripts/rvm" ]; then
       # shellcheck disable=SC1091
       source "$HOME/.rvm/scripts/rvm"
       rvm use "${want}${gemset:+@${gemset}}" >/dev/null 2>&1 || rvm use "$want" >/dev/null 2>&1 || true
     elif command -v rbenv >/dev/null 2>&1; then
       eval "$(rbenv init - bash 2>/dev/null)" || true
-    elif [ -s /opt/homebrew/opt/chruby/share/chruby/chruby.sh ] || [ -s /usr/local/share/chruby/chruby.sh ]; then
-      # shellcheck disable=SC1091
-      source /opt/homebrew/opt/chruby/share/chruby/chruby.sh 2>/dev/null || source /usr/local/share/chruby/chruby.sh
-      chruby "${want#ruby-}" >/dev/null 2>&1 || true
+    else
+      for chruby_sh in /usr/share/chruby/chruby.sh /usr/local/share/chruby/chruby.sh \
+                       /home/linuxbrew/.linuxbrew/opt/chruby/share/chruby/chruby.sh \
+                       /opt/homebrew/opt/chruby/share/chruby/chruby.sh; do
+        if [ -s "$chruby_sh" ]; then
+          # shellcheck disable=SC1090
+          source "$chruby_sh" && chruby "${want#ruby-}" >/dev/null 2>&1 || true
+          break
+        fi
+      done
     fi
   fi
 
@@ -43,6 +50,7 @@ openspec_repo_env() {
   [ -f .nvmrc ] && want="$(tr -d '[:space:]' < .nvmrc)"
   [ -z "$want" ] && [ -f .node-version ] && want="$(tr -d '[:space:]' < .node-version)"
   if [ -n "$want" ]; then
+    [ -d "$HOME/.local/share/fnm" ] && PATH="$HOME/.local/share/fnm:$PATH"
     if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
       # shellcheck disable=SC1091
       source "${NVM_DIR:-$HOME/.nvm}/nvm.sh" && nvm use "$want" >/dev/null 2>&1 || true
@@ -52,18 +60,25 @@ openspec_repo_env() {
   fi
 
   # Python: .python-version through pyenv.
-  if [ -f .python-version ] && command -v pyenv >/dev/null 2>&1; then
-    eval "$(pyenv init - bash 2>/dev/null)" || true
+  if [ -f .python-version ]; then
+    [ -d "${PYENV_ROOT:-$HOME/.pyenv}/bin" ] && export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}" && PATH="$PYENV_ROOT/bin:$PATH"
+    if command -v pyenv >/dev/null 2>&1; then
+      eval "$(pyenv init - bash 2>/dev/null)" || true
+    fi
   fi
 
-  # Go: .go-version through goenv, installed in ~/.goenv or on PATH. The go command
-  # itself reads go.mod's go and toolchain lines.
+  # Go: .go-version through goenv, installed in ~/.goenv or on PATH (/usr/local/go/bin on Linux).
+  # The go command itself reads go.mod's go and toolchain lines.
+  [ -d /usr/local/go/bin ] && PATH="/usr/local/go/bin:$PATH"
   if [ -f .go-version ]; then
     [ -d "${GOENV_ROOT:-$HOME/.goenv}/bin" ] && export GOENV_ROOT="${GOENV_ROOT:-$HOME/.goenv}" && PATH="$GOENV_ROOT/bin:$PATH"
     if command -v goenv >/dev/null 2>&1; then
       eval "$(goenv init - bash 2>/dev/null)" || true
     fi
   fi
+
+  # Rust: Cargo in ~/.cargo/bin.
+  [ -f Cargo.toml ] && [ -d "$HOME/.cargo/bin" ] && PATH="$HOME/.cargo/bin:$PATH"
 
   # mise and asdf read .tool-versions and .mise.toml for every language at once.
   if command -v mise >/dev/null 2>&1; then

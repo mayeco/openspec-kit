@@ -5,7 +5,7 @@
 # Usage: bin/agent_exec.sh <workdir> <prompt-file> [engine[,engine...]]
 #
 # Engines: claude, codex, copilot, hermes, opencode, agy (Antigravity), kilo, cline, pi, omp (oh-my-pi),
-# crush, and stub for the kit's tests.
+# crush, cursor-agent, zcode, and stub for the kit's tests.
 # Callers pass the engines of their role from config/agents.yaml (bin/lib/agents.rb),
 # in order; without them it is $AGENT_ENGINE, then the first engine found on PATH.
 # Retries and fallback: an engine that fails (any exit code but 0: out of quota, not
@@ -42,12 +42,12 @@ ORDER="$(ruby "$AGENTS_RB" order)"   # fallback | random | spread
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
-  for candidate in claude codex copilot hermes opencode agy kilo cline pi omp crush; do
+  for candidate in claude codex copilot hermes opencode agy kilo cline pi omp crush cursor-agent zcode; do
     if command -v "$candidate" >/dev/null 2>&1; then ENGINES="$candidate"; break; fi
   done
 fi
 
-# macOS ships without GNU timeout; Homebrew coreutils installs it as gtimeout.
+# GNU timeout is standard on Linux (coreutils); macOS may provide it as gtimeout.
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # GNU timeout moves itself into a new process group, so INT/TERM sent to our
 # group (dispatcher shutdown, a scheduler stopping the cycle) would never reach
@@ -289,6 +289,25 @@ run_engine() { # <engine>
       # crush.json are the way to restrict it). It reads piped stdin into the prompt: give
       # it none, so it never waits on an open pipe.
       bounded crush run --quiet ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT" </dev/null
+      ;;
+    cursor-agent)
+      # Cursor Agent. -p (--print) runs headless with write and shell tools; --trust trusts
+      # the workspace without asking. all approves every command with --force (--yolo);
+      # restricted enables Cursor's sandbox (--sandbox enabled) without --force.
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded cursor-agent -p --trust --sandbox enabled ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
+      else
+        bounded cursor-agent -p --force --trust ${EXTRA[@]+"${EXTRA[@]}"} "$PROMPT"
+      fi
+      ;;
+    zcode)
+      # ZCode. -p (--prompt) runs a single headless prompt without the TUI; --mode yolo
+      # approves every tool, while restricted runs in guarded mode (--mode guarded).
+      if [ "$PERMISSIONS" = restricted ]; then
+        bounded zcode -p "$PROMPT" --mode guarded ${EXTRA[@]+"${EXTRA[@]}"}
+      else
+        bounded zcode -p "$PROMPT" --mode yolo ${EXTRA[@]+"${EXTRA[@]}"}
+      fi
       ;;
     copilot)
       DENY=()

@@ -308,7 +308,7 @@ module AppSetup
     puts "  to fill in repo.config.yaml: #{left.join(', ')} (the gates skip placeholders with a warning)" if left.any?
     gates = (YAML.safe_load_file(config) || {})['gates'].to_h
     if gates['secrets'].to_s.start_with?('gitleaks') && !on_path?('gitleaks')
-      puts '  the secrets gate needs gitleaks (brew install gitleaks); install it or remove the gate'
+      puts '  the secrets gate needs gitleaks; install it from your package manager or remove the gate'
     end
     puts 'next:'
     puts "  review repos/#{name}/repo.config.yaml#{env_script ? " and #{ENV_SCRIPT}" : ''} with the person who knows the repository"

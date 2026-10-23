@@ -30,8 +30,8 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
-# Schedulers start with a minimal PATH: Homebrew, ~/.local/bin and Ruby shims are missing.
-export PATH="${OPENSPEC_PATH_PREFIX:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}:$PATH"
+# Schedulers (cron, systemd, launchd) start with a minimal PATH: ~/.local/bin, /usr/local/bin and language shims are missing.
+export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$PATH"
 export CI=1 NONINTERACTIVE=1 GIT_TERMINAL_PROMPT=0
 BASE="$(ruby "$ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.yaml
 LOG_DIR="$ROOT/log"
