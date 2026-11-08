@@ -35,7 +35,7 @@ require_relative 'lib/prompts'
 Encoding.default_external = Encoding::UTF_8
 
 module CyclePrompt
-  ROOT = File.expand_path('..', __dir__)
+  ROOT = OpenSpecSettings.app_root
   CYCLE = File.join(ROOT, 'config', 'cycle.yaml')
   EXPLORATION = File.join(ROOT, 'config', 'exploration.yaml')
   STATE = File.join(ROOT, 'log', 'cycle', 'strategy_state.json')
@@ -50,7 +50,7 @@ module CyclePrompt
   APPROVAL = {
     'jev' => 'after you exit, the script asks Jev (`config/templates/jev/proposal_review.yaml`) and queues the ' \
              'proposals it approves; the rest wait for a human',
-    'human' => 'a human approves each one (`ruby bin/proposals.rb approve <change>`); the script then queues it',
+    'human' => 'a human approves each one (`openspec-kit proposals approve <change>`); the script then queues it',
     'auto' => 'the script queues every proposal after you exit, without review'
   }.freeze
 
@@ -151,10 +151,10 @@ module CyclePrompt
     who = if cycle.dig('proposals', 'prompt_approval') == 'auto'
             'the script applies it after you exit, without review (`proposals.prompt_approval: auto`)'
           else
-            'a human approves it (`ruby bin/proposals.rb show <change>`, then `approve <change>`), and the next cycle applies it'
+            'a human approves it (`openspec-kit proposals show <change>`, then `approve <change>`), and the next cycle applies it'
           end
     'never edit `config/prompts/`; an edit of a prompt that evidence argues for is a prompt proposal ' \
-      "(openspec-kit-cycle, \"Propose prompt edits\"): #{who}. Versions to compare: `ruby bin/prompt_report.rb`."
+      "(openspec-kit-cycle, \"Propose prompt edits\"): #{who}. Versions to compare: `openspec-kit prompt-report`."
   end
 
   def visual_line(cycle)
@@ -165,7 +165,7 @@ module CyclePrompt
     'a browser session in an agent app (`openspec-kit-visual-qa` skill) checks every integrated change in the ' \
       'application and explores the strategies that need a browser. You run headless: when only a browser ' \
       'can confirm something (a rendered page, a flow, the console), ask it with ' \
-      '`ruby bin/visual_qa.rb request "<what to check, where, and why>" [--change <name>]` and say so in the report.'
+      '`openspec-kit visual-qa request "<what to check, where, and why>" [--change <name>]` and say so in the report.'
   end
 end
 
@@ -185,7 +185,7 @@ if __FILE__ == $PROGRAM_NAME
     File.write(args.first, CyclePrompt.render(strategy, cycle, options[:dispatch]))
     puts "strategy: #{strategy ? "#{strategy['slug']} (#{strategy['kind'] || 'defects'})" : 'none (all need a browser)'}"
   rescue ArgumentError, Psych::Exception, JSON::ParserError => e
-    warn "cycle_prompt: #{e.message}"
+    $stderr.puts "cycle_prompt: #{e.message}"
     exit 1
   end
 end

@@ -29,13 +29,13 @@ proposals:
   # capabilities, roadmap features) before they are queued:
   #   jev    Jev (gate proposal_review of config/jev_policy.yaml); what it does not
   #          approve waits for a human
-  #   human  a person: ruby bin/proposals.rb approve <change>
+  #   human  a person: openspec-kit proposals approve <change>
   #   auto   nobody: every proposal is queued
   approval: jev
   # Who approves a prompt proposal: an edit of config/prompts/plan.md, build.md or
-  # cycle.md that the cycle bases on evidence (repair rounds, bin/prompt_report.rb).
+  # cycle.md that the cycle bases on evidence (repair rounds, openspec-kit prompt-report).
   # Once approved, bin/proposals.rb applies and checks it, and the cycle records it.
-  #   human  a person: ruby bin/proposals.rb show <change>, then approve <change>
+  #   human  a person: openspec-kit proposals show <change>, then approve <change>
   #   auto   nobody: it is applied after the judgment that proposed it
   prompt_approval: human
 

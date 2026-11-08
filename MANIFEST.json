@@ -1,14 +1,14 @@
 {
   "name": "openspec-kit",
-  "version": "3.1.0",
-  "source_commit": "0ace249e242ee80c57da6231c6af5ce65aefdb76",
+  "version": "3.2.0",
+  "source_commit": "88cdb56c0b37a4f588121e3e58f38ba583010f6a",
   "source_dirty": false,
-  "built_at": "2026-10-23T20:33:26Z",
+  "built_at": "2026-11-08T04:07:36Z",
   "toolchain": {
-    "openspec": "1.14.3",
+    "openspec": "1.16.0",
     "git": "2.56.0",
-    "ruby": "4.0.7",
-    "jev": "0.2.0",
+    "ruby": "4.0.9",
+    "jev": "0.2.1",
     "jev_model": "jev-1.14.0"
   },
   "files": {
@@ -18,7 +18,7 @@
     },
     "AGENTS.md": {
       "class": "seed",
-      "sha256": "84212ed89b34b0ba45c071a6699d7efa5004d41fee57fdc87014aee8999e8908"
+      "sha256": "8bb31a5efac5255a216020fa9bb25b896c170a633c55dbe0c3d278456f78e5b2"
     },
     "CLAUDE.md": {
       "class": "seed",
@@ -26,15 +26,15 @@
     },
     "INSTALL.md": {
       "class": "kit",
-      "sha256": "db88dd31659a0e46d8239e0ad1d333135311383e4522424bbee68cf06e6093b5"
+      "sha256": "d08ec76484e9deb90ff3219ab00fac742ccf42c8a9ffd990a33e461e10f2f3f3"
     },
     "MEMORY.md": {
       "class": "seed",
-      "sha256": "e93e0dea8b0e33b49d8beab059797973ca29d1526b20fd68d790ceb77c4b9f50"
+      "sha256": "1e3664e7ce5099792b428af993eacb5f90e8b8b45f84848699770340d562d215"
     },
     "README.md": {
       "class": "seed",
-      "sha256": "cc06f1e116ca16fca7edb3b9568af3e291b3202f3a4dfefaafcfb2723a449f4d"
+      "sha256": "e4fe044956cbb8ab90ab78f2d2f98988b0f4f11dd72c7f641e19cbecd978041b"
     },
     "ROADMAP.md": {
       "class": "seed",
@@ -42,55 +42,55 @@
     },
     "SCHEDULING.md": {
       "class": "kit",
-      "sha256": "bc6eb24ae32e0109a1a726de259951b6316aac7ecfffd35c920850c674a625af"
+      "sha256": "d1309c64224df320dee71936be331f17022105e1bc7a6bd6ad945f18b948c542"
     },
     "bin/agent_exec.sh": {
       "class": "kit",
-      "sha256": "6fe7a046b00e2f1e7b0c788a51e899fa410fd76232d4eb41ccc68c479f6a6edd"
+      "sha256": "dc25e308008fa003b1c021ced394181f800111cdc3c8d2a682806265945c3644"
     },
     "bin/app_setup.rb": {
       "class": "kit",
-      "sha256": "4a4fed4208608cdc01f58c48e2abe7a3744a9ae8b9212c1d6f7169c390a88548"
+      "sha256": "94e5c1ea98fa1ab96f8154dc550b344ab23597cb766bc6f1fd17a6889b0d7e6f"
     },
     "bin/check_ai_engines.sh": {
       "class": "kit",
-      "sha256": "546a58613b7ee692b2de327a07c8441419694dc7a1e0be199b814cc02bd40377"
+      "sha256": "de3127790f01f3a88c206ecc44f87938d35d46fa6378a8cd8144215cdbd891ed"
     },
     "bin/completed_since.sh": {
       "class": "kit",
-      "sha256": "db089affa4993623a98cee9fea78866bdb0c4e3f940cb56aefc029d4411554fc"
+      "sha256": "7ecd9c3aea549410cf3c4e866b4d0fca7d792bf4ff194d938e95783fe77f1346"
     },
     "bin/cycle_progress.rb": {
       "class": "kit",
-      "sha256": "243de45d4786510c7c641dca122451685fd103476c1dce1a934f5cb1bb1d261f"
+      "sha256": "17e4a82493172bc595bcded20204942bbb9a1bf55375013462ce5245f4207a9a"
     },
     "bin/cycle_prompt.rb": {
       "class": "kit",
-      "sha256": "baa571808500dda7fc669b83f27817a088bc1a27e059a303c22694f459906ac8"
+      "sha256": "21a2b69516f016b629902ad70f9ef731e7c59432b561c8248b53cfae7364f0af"
     },
     "bin/cycle_status.sh": {
       "class": "kit",
-      "sha256": "982cc09b361021caa298fbcabea6b14a1f2dda96264294a6586bdebda7fd9889"
+      "sha256": "5fab7c1e40d6d138442310ebb1e808ab93f42caaeedf25a771bba6d0cb929020"
     },
     "bin/install.sh": {
       "class": "kit",
-      "sha256": "100bfc4d50024187fe78eb24520649f573ea29da2a799d4e1b1050e5853c9810"
+      "sha256": "b1d304beca00629bebbde0bc0f0fed4fdbf98edf9e1a2ca525334c6dab75724c"
     },
     "bin/jev_contract.sh": {
       "class": "kit",
-      "sha256": "217b56d53afb57d6c049b999164d9565c6f5f5929132edb4ff6ed6d6e64e72c7"
+      "sha256": "42a70ea947f3e9099c64f50b57f944ba8a9d2d72eb444d6cdbd1afd580ebba8f"
     },
     "bin/jev_report.rb": {
       "class": "kit",
-      "sha256": "af65815bcabd238319990c7640d0fa22e3a71d8e1b39718d507ecf8bc1edca24"
+      "sha256": "978bdc428e9e4788f6c2b0b1960f1b23f5d91300a2653e98aecb4b09dd0f6521"
     },
     "bin/kit_config.rb": {
       "class": "kit",
-      "sha256": "4969f5c67108d4801b434bfa223960f168348ad99fcfd3f8a811361edd984eb6"
+      "sha256": "1e0b318fe367f902ef11b55d56f8848b520e28d8237dddb173401acbaa567eaf"
     },
     "bin/lib/agents.rb": {
       "class": "kit",
-      "sha256": "65f7210c894386ede92bf85259efa73a8ec225df6ed2d34eb394a0da21de6b13"
+      "sha256": "aa643c8063cfa1941a7a550c513f77d9302ed289037804f0b845d0f7af2d2cab"
     },
     "bin/lib/bounded.rb": {
       "class": "kit",
@@ -98,15 +98,15 @@
     },
     "bin/lib/memory.rb": {
       "class": "kit",
-      "sha256": "05c538ef37b183e6d6cd41ddd3c06cb0d0e5b06afdb8f8c4761c5fe77561c614"
+      "sha256": "fa870b2cb4f387c1051da907290bd8699139e300b669d0b3d37c37374ee45def"
     },
     "bin/lib/openspec_orchestrator.rb": {
       "class": "kit",
-      "sha256": "6d3d37520f54a8d5ffaef53b476d86ffd5b7137701f25deb2ce5770c0f63a420"
+      "sha256": "04ba0439f65f50941a0179411ed571fac702794736c8e3a3105866fc944f0cb9"
     },
     "bin/lib/portal_actions.rb": {
       "class": "kit",
-      "sha256": "f80a12741830b34edaed5206b556bf588af98cecb75b12e49accca5c806b5cb9"
+      "sha256": "a5197e43e7ec85f3c63882053ecea1d0e8d7d2b0627e03c26f870fb503b5cc49"
     },
     "bin/lib/portal_index.rb": {
       "class": "kit",
@@ -114,7 +114,7 @@
     },
     "bin/lib/portal_state.rb": {
       "class": "kit",
-      "sha256": "23baf0d8c8e650902bbf0e589cd1f13622c5d6f5a71d0ca0bebea196a16e9596"
+      "sha256": "3e8e54539ccd31114ba5604bac21832781790b5d8f32ea23f79ecd494df337e9"
     },
     "bin/lib/portal_ui.rb": {
       "class": "kit",
@@ -166,67 +166,67 @@
     },
     "bin/lib/prompts.rb": {
       "class": "kit",
-      "sha256": "76d6bca1377412c844cb8a6b92b358c1f3c45708978b537c336842ff96600868"
+      "sha256": "b0f7611d7816fd06bd4feb632669b7c40d1b7513b7b18e69ef77df2f787a3ff4"
     },
     "bin/lib/record.sh": {
       "class": "kit",
-      "sha256": "1df42a9f8aab1b1af6f8194383c73356d2382cbcaaf71ee1944cbbe16bc7152a"
+      "sha256": "d2f7281d0174cc2623ba5d9dc18fae80a1847acad4696221c47be427209e8152"
     },
     "bin/lib/settings.rb": {
       "class": "kit",
-      "sha256": "11229278f978dd5415ea6f3f3bbc9fc0daf0e738e745fbf408602423762d5f2f"
+      "sha256": "1e8e395c1851ed6d6b436b04db4daccdce54e96c6e5134091c24f17c6dd1efbe"
     },
     "bin/openspec-kit": {
       "class": "kit",
-      "sha256": "fcbb650cba6ebecac657982f9b00809ac3a12ff2e5ce974e576d5254c661554d"
+      "sha256": "3e8bf243f2149fe8a03c58b374612570498537bcabc9afaa954e5cfebd779446"
     },
     "bin/openspec_dispatcher.rb": {
       "class": "kit",
-      "sha256": "091f7fcef2f1ddbc3bc3d5b575daff276e98104022c90a57308587f90208f37e"
+      "sha256": "fed542937588d1b773ad6da3997bd801aaec9fc64efea6310a991d5d0368271a"
     },
     "bin/openspec_kit.rb": {
       "class": "kit",
-      "sha256": "522c8e244943661c7b9a6fbfa275fa05cefed67234930f426ced9cd1d5194dfa"
+      "sha256": "a296333232d12f9f241e7afdcd585a23b64b071c06de10a444e0df79bc4b60b1"
     },
     "bin/openspec_merger.rb": {
       "class": "kit",
-      "sha256": "4c40e01201a9c93752906e60d01997b1f226680b2c42ae2bf73f232f3b120ff2"
+      "sha256": "abefc227234a3cd26de4081cfb47fb57b8b34f7705b6f27dc125bef504b28cfe"
     },
     "bin/portal.rb": {
       "class": "kit",
-      "sha256": "b7da26d06d37190afe9701eccc9635003cb30b85a5c3c6e8e8def386ae3543e8"
+      "sha256": "93fa0664f0e699e6fdddef198bce417696ebbbd2dbcd3ff14b89b4d9785d899d"
     },
     "bin/prompt_report.rb": {
       "class": "kit",
-      "sha256": "fea3f98abd3ff3bbe1b05951022b5023dfa69a08152bd25113ddd6ef12cfb99c"
+      "sha256": "ed3906e246e02a85ffa316d8f5936024748b37b64fdd11579349e7d48076c59f"
     },
     "bin/proposals.rb": {
       "class": "kit",
-      "sha256": "21aa4a1b0e07936928a7cdeddf8b0272d09f137f77a4293ae77b258298392444"
+      "sha256": "bf779b6320490dfd62bfc0f52f8296732e7576ac68ecf717c2cbf193df379a1d"
     },
     "bin/repo_exec.sh": {
       "class": "kit",
-      "sha256": "541f91944ab7edfe296d7ed93b13e22cfc20b1e0c24b0317f74f2b9bb26bf150"
+      "sha256": "35a93b70fb79973d501e7251f5b299ced5758aba8a27f9a3f53a943ea2b99bb5"
     },
     "bin/run_cycle.sh": {
       "class": "kit",
-      "sha256": "8cf2b6da8558c0bd806261ed362f12d2f4cd56a753c64f6f092d932cfb0db46b"
+      "sha256": "e43b605ae800bc20770fa34b7b82b39881f2ea1c546f739ec8e1d70088d671ec"
     },
     "bin/run_gates.sh": {
       "class": "kit",
-      "sha256": "0347d9da4f1caa67ffdba02ca2e1b8afcacfb1745e61ca785a0add64b21a9b24"
+      "sha256": "fdf20b01efd72e654d7ef550a9f8dffa50682a473c850eb50f0e2d00f102020b"
     },
     "bin/sync_repos.sh": {
       "class": "kit",
-      "sha256": "07273d95f92d72ec5a6783109579e70ee75403375c702fdf2b78628c491d8f69"
+      "sha256": "80507b0ada8705d55a939caf1f061be1c0dd66272ff32f9c2ccb6df586e11662"
     },
     "bin/visual_qa.rb": {
       "class": "kit",
-      "sha256": "a1ef4a9c59898542d285ad96e464ec8573193ac7502e8bace26cd5aa4598b4f2"
+      "sha256": "27700704be00d619f4ac086b39bfd3b3f8d7df7b57da95e78f59a85a7733a798"
     },
     "bin/visual_qa.sh": {
       "class": "kit",
-      "sha256": "14f64065f9ef88c35101814cb51072dc487dcd4e4a7f1d04ee3e19e90ed5eb0a"
+      "sha256": "de728ff665a2e931eebb6705ac1686ecd19e8312816373e6eaf5112ad02e6b42"
     },
     "config/agent_backlog.json": {
       "class": "seed",
@@ -242,11 +242,11 @@
     },
     "config/agents.yaml": {
       "class": "seed",
-      "sha256": "e5be21bd620d7407db442d8916cb70314d0a8eba03fa9051816180c3ed276ca6"
+      "sha256": "d92e96d71e6d4dc8fb13851f2ee1ee4469246ed220d08a38aeb3bc3d9335bb7b"
     },
     "config/cycle.yaml": {
       "class": "seed",
-      "sha256": "48dcd59a8d77efe377c42603b59df86474eebd40a990adf41d17f24e299ba636"
+      "sha256": "95c409612b511cf77d98403a256516f73957714602de330b8f7ac6febccb7482"
     },
     "config/exploration.yaml": {
       "class": "seed",
@@ -254,27 +254,27 @@
     },
     "config/jev_policy.yaml": {
       "class": "seed",
-      "sha256": "dfccd1e675a8b54f5a84a4a5044292d8ff7ae1fddf87d359d2ed441bc3d55923"
+      "sha256": "63fdf0dc1c65fb1b776cc922b9f111bea5a12983485b84c1ea85c969cc6c35fd"
     },
     "config/pipeline.yaml": {
       "class": "seed",
-      "sha256": "19033e3399521bc4822c91534d1084e4cd525f7c13dd4497cd038bca563c6686"
+      "sha256": "954149788cc4ea473ad1a711f1c1a34b4051abf0e24b1a37533938fa588e80f4"
     },
     "config/prompts/build.md": {
       "class": "seed",
-      "sha256": "48988e82670b8b829fe369416f3cab36134be283d8eaab609a2c72aa9b95f98e"
+      "sha256": "3d01018fa33b8b97a10259c040303b241b8f51dff1d59e16226a787d8a7ed8a2"
     },
     "config/prompts/cycle.md": {
       "class": "seed",
-      "sha256": "6ef39d1cbc69752b546a8be3b4b8bb3e737bb4a677682daf6c61b7c0cc8ebb02"
+      "sha256": "b862b699d13c25d62dfd6dbb50d2ef369cc47ee837e17f931929787a82aed35c"
     },
     "config/prompts/plan.md": {
       "class": "seed",
-      "sha256": "9dcc4db6f04d038248ba0e5186a863350d3b1580735120e08df8b8c4d33d2465"
+      "sha256": "6dba53c12332eb3700bdaced6f0f494c90611d7789d143bc800555ed68b0409b"
     },
     "config/templates/authoring_rules.md": {
       "class": "kit",
-      "sha256": "ee73507b8e7d63ef9cec3852c149f67139b57dd42e5980c6f38c6bee8da0fd7a"
+      "sha256": "4347a2ebaf2c0e9799315e60c2160f308b55e8e105131a713b1ad3a5cc1e5008"
     },
     "config/templates/cycle_state.json": {
       "class": "kit",
@@ -370,15 +370,15 @@
     },
     "config/templates/repo.yaml": {
       "class": "kit",
-      "sha256": "b48b472ebddca23bae63b19a0eebe257aab655da307a02cb0ea497b86694d1dd"
+      "sha256": "6c51425cbccf969b2b2db8d8e912fbfbbc5ef099f8d9e5a7226e53e237260a99"
     },
     "config/templates/repo_env.sh": {
       "class": "kit",
-      "sha256": "f7383fbc585bf5a436591eefbd89e15462ea1e0da399cff83fa47002267dcc45"
+      "sha256": "d7aebefbbffc2ff27974998b0b5d4655bf9996c4d2518a7d93fcf814d2a03574"
     },
     "install.sh": {
       "class": "kit",
-      "sha256": "823f28defd485635f1fc18414352a8462b489a15cb9556a83b285fd874f4f8b5"
+      "sha256": "09b5e083a32b84163ba3cf9d49a6d43ecd8f7ec638c0fd08f5e71c564fb61c4e"
     },
     "log/.keep": {
       "class": "seed",
@@ -386,11 +386,11 @@
     },
     "skills/openspec-kit-config/SKILL.md": {
       "class": "skill",
-      "sha256": "bc25ff3dd3896735250455676e85eb86dffb38ef8148621021f7726ad7dccf63"
+      "sha256": "0f376797a51cee548af174efb89c5a7f1192713c715a1a2153f03be2c157f5aa"
     },
     "skills/openspec-kit-cycle/SKILL.md": {
       "class": "skill",
-      "sha256": "4817d987c0be4212e612813618565de946cc46409a4589db44ff01feadff6d7a"
+      "sha256": "6081b5d60cf2e2168d406eb0b9284f2ef1eeebfcb3337d766fa9976f1552fe7f"
     },
     "skills/openspec-kit-cycle/references/report.template.md": {
       "class": "skill",
@@ -398,27 +398,27 @@
     },
     "skills/openspec-kit-cycle/references/routine-prompt.md": {
       "class": "skill",
-      "sha256": "204463e5d05f97ad3712193e46e0b9cab73195d73886217af321aa07aee5fdd8"
+      "sha256": "5c87f66b6fb2fc7d505d1a60971132679356531cba9b323ad11d5d5c85f5c0e1"
     },
     "skills/openspec-kit-init/SKILL.md": {
       "class": "skill",
-      "sha256": "7ab7c7dde35039c6274e93763d1e94b6cc9aefd6ba2265baac84975b20f381fa"
+      "sha256": "8878bceb355d8b00766aa7621e65548aecd82dcb5918f5332e331d1265f2e55a"
     },
     "skills/openspec-kit-qa/SKILL.md": {
       "class": "skill",
-      "sha256": "02a4869e7ee81c39bc78b45b86a0af7c33259abfe66970a1562c9c2e0be95715"
+      "sha256": "efb6c2cc24b938257288ac0dd132dddfb9a818213272ecc04b44909d1d0cfaa5"
     },
     "skills/openspec-kit-status/SKILL.md": {
       "class": "skill",
-      "sha256": "c6d557ee61168ee19eaf23d30e99832caf077617049e9005a4465c0dcf03e14d"
+      "sha256": "c1ee9ded80babcb62c37032bf911f3622b296b6838cd2c0517122e32463e1099"
     },
     "skills/openspec-kit-visual-qa/SKILL.md": {
       "class": "skill",
-      "sha256": "952f1fbc0fbbe40ccccf74d08f08437c07cf3f948ab9cc264eb9cfb71cf7b6ca"
+      "sha256": "28175627259544478b17b52c2dee0e229a5195087e97323e19cbb789877e2657"
     },
     "skills/openspec-kit-visual-qa/references/routine-prompt.md": {
       "class": "skill",
-      "sha256": "9cf5ef48d3ac84674b9a0b9277521f5c335cbbb626df846b6e2c493a39e60eac"
+      "sha256": "29abc8a863e8b1e60df7d4a47c95aee403fc5a5692e1ce071f1a89b9da1c1e4b"
     }
   }
 }

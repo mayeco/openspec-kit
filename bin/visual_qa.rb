@@ -30,7 +30,7 @@ require_relative 'lib/memory'
 Encoding.default_external = Encoding::UTF_8
 
 module VisualQA
-  ROOT = File.expand_path('..', __dir__)
+  ROOT = CyclePrompt::ROOT
   QUEUE = File.join(ROOT, 'log', 'cycle', 'visual_queue.json')
   LOCK_FILE = "#{QUEUE}.lock"
   STRATEGY_STATE = File.join(ROOT, 'log', 'cycle', 'visual_strategy_state.json')
@@ -178,13 +178,13 @@ module VisualQA
     <<~MD
       # Visual QA session #{stamp}
 
-      Written by `bash bin/visual_qa.sh begin`. Follow the `openspec-kit-visual-qa` skill with this plan, within #{minutes} minutes, then run `bash bin/visual_qa.sh end`.
+      Written by `openspec-kit visual-qa begin`. Follow the `openspec-kit-visual-qa` skill with this plan, within #{minutes} minutes, then run `openspec-kit visual-qa end`.
 
       ## Check in the browser
 
       #{checks}
 
-      Close each one: `ruby bin/visual_qa.rb done <id> verified|regression|not-visual|cannot-verify "<one line of evidence>"`. An item you do not close goes back to the queue.
+      Close each one: `openspec-kit visual-qa done <id> verified|regression|not-visual|cannot-verify "<one line of evidence>"`. An item you do not close goes back to the queue.
 
       ## Explore
 
@@ -243,12 +243,12 @@ if __FILE__ == $PROGRAM_NAME
     in ['release', stamp] then VisualQA.with_lock { VisualQA.release(stamp) }
     in ['status'] then VisualQA.status
     else
-      warn 'Usage: ruby bin/visual_qa.rb enqueue-integrated | request "<what>" [--change NAME] | ' \
+      $stderr.puts 'Usage: ruby bin/visual_qa.rb enqueue-integrated | request "<what>" [--change NAME] | ' \
            'take <stamp> <plan-file> | done <id> <verdict> ["<note>"] | release <stamp> | status'
       exit 2
     end
   rescue VisualQA::Error, JSON::ParserError, ArgumentError => e
-    warn "visual-qa: #{e.message}"
+    $stderr.puts "visual-qa: #{e.message}"
     exit 1
   end
 end

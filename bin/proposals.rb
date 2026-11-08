@@ -441,12 +441,12 @@ if __FILE__ == $PROGRAM_NAME
     in ['approve', name] then Proposals.decide(name, 'approved')
     in ['reject', name] then Proposals.decide(name, 'rejected')
     else
-      warn 'Usage: ruby bin/proposals.rb review | rebase <base> | carry <checkout> | list | show <change> | ' \
+      $stderr.puts 'Usage: ruby bin/proposals.rb review | rebase <base> | carry <checkout> | list | show <change> | ' \
            'approve <change> | reject <change>'
       exit 2
     end
   rescue ArgumentError, JSON::ParserError => e
-    warn "proposals: #{e.message}"
+    $stderr.puts "proposals: #{e.message}"
     exit 1
   end
 end

@@ -10,8 +10,8 @@ it. The dispatcher fills these placeholders:
   {{authoring_rules}}  the kit's rules for OpenSpec artifacts (config/templates/authoring_rules.md)
   {{feedback}}         on a repair round, exactly what failed verification; keep it, or repairs
                        never learn what to fix
-This comment never reaches the agent. `ruby bin/kit_config.rb check` checks the placeholders, and
-`ruby bin/lib/prompts.rb render plan change=demo goal="Add a demo"` shows the result.
+This comment never reaches the agent. `openspec-kit config check` checks the placeholders, and
+`openspec-kit prompts render plan change=demo goal="Add a demo"` shows the result.
 -->
 You are the PLANNING agent for OpenSpec change "{{change}}" in this git worktree.
 Goal: {{goal}}

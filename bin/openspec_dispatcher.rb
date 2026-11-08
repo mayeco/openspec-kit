@@ -98,6 +98,7 @@ class OpenSpecDispatcher
     @engines_down = false     # an agent call found every engine down: start nothing else
     @slots = {}               # change => OPENSPEC_SLOT of its worker (1, 2, ...)
     @items = []               # the last backlog read that parsed
+    @invalid_items = []       # items it cannot schedule, shown by --dry-run
     @backlog_sig = nil        # mtime and size of that read
     @reported = {}            # backlog problems already reported as events
     @last_fetch = Time.at(0)
@@ -164,7 +165,7 @@ class OpenSpecDispatcher
   def acquire_singleton!
     @singleton = File.open(File.join(O::LOCK_DIR, 'dispatcher.lock'), File::RDWR | File::CREAT, 0o644)
     unless @singleton.flock(File::LOCK_EX | File::LOCK_NB)
-      warn '[dispatcher] another dispatcher is running; exiting'
+      $stderr.puts '[dispatcher] another dispatcher is running; exiting'
       exit 0
     end
     @singleton.truncate(0)
@@ -197,7 +198,10 @@ class OpenSpecDispatcher
         @backlog_sig = sig
         items = raw.is_a?(Hash) ? Array(raw['changes']) : Array(raw)
         valid, invalid = items.partition { |i| i.is_a?(Hash) && i['change_name'].to_s.match?(O::CHANGE_NAME) }
-        invalid.each { |i| report_once('backlog.invalid_name', item: i.to_s[0, 200]) }
+        @invalid_items = invalid
+        invalid.each do |i|
+          report_once('backlog.invalid_name', change: i.is_a?(Hash) ? i['change_name'].to_s : nil, item: i.to_s[0, 200])
+        end
         valid.group_by { |i| i['change_name'] }.each do |name, dups|
           report_once('backlog.duplicate_name', change: name, count: dups.size) if dups.size > 1
         end
@@ -218,7 +222,7 @@ class OpenSpecDispatcher
 
     @reported[key] = true
     # A dry run writes nothing: what it finds wrong in the backlog goes to stderr instead.
-    return warn("dispatcher: #{event} #{fields.map { |k, v| "#{k}=#{v}" }.join(' ')}") if @dry_run
+    return $stderr.puts("dispatcher: #{event} #{fields.map { |k, v| "#{k}=#{v}" }.join(' ')}") if @dry_run
 
     O.emit(event, **fields)
   end
@@ -302,7 +306,8 @@ class OpenSpecDispatcher
                      building.flat_map { |c| claimed(c, by_name[c]) }
     deferrals = O.read_json(DEFERRALS_FILE) || {}
     free = running ? [running['workers'].to_i - building.size, 0].max : @max_workers
-    rows = backlog.reject { |i| @archived.include?(i['change_name']) }.map do |item|
+    rows = @invalid_items.map { |item| invalid_dry_run_row(item) }
+    rows += backlog.reject { |i| @archived.include?(i['change_name']) }.map do |item|
       dry_run_row(item, waited, running, building, ready, in_flight_caps, deferrals, by_name)
     end
     rows.select { |r| r['state'] == 'ready' }.each_with_index do |r, n|
@@ -335,6 +340,16 @@ class OpenSpecDispatcher
   def claimed(change, item)
     wt = File.join(O::WORKTREE_BASE, "worker-#{change}")
     capabilities(wt, change) + Array(item&.fetch('locks', nil)).map { |l| "lock:#{l}" }
+  end
+
+  def invalid_dry_run_row(item)
+    name = item.is_a?(Hash) ? item['change_name'].to_s : item.to_s
+    {
+      'change' => name.empty? ? '(missing change_name)' : name,
+      'priority' => item.is_a?(Hash) ? item['priority'] || 'normal' : 'normal',
+      'counts_as' => '-', 'waited_hours' => nil, 'state' => 'invalid', 'next' => false,
+      'why' => 'invalid change_name: use 1-63 lowercase letters, digits or hyphens; start with a letter or digit'
+    }
   end
 
   def dry_run_row(item, waited, running, building, ready, in_flight_caps, deferrals, by_name)
@@ -375,7 +390,7 @@ class OpenSpecDispatcher
     head = if running
              "dispatch: running (pid #{running['pid']}, #{running['workers']} workers, #{building.size} building, #{free} free)"
            else
-             "dispatch: not running; the next cycle (or ruby bin/openspec_dispatcher.rb) starts one with #{@max_workers} workers"
+             "dispatch: not running; the next cycle (or openspec-kit dispatch) starts one with #{@max_workers} workers"
            end
     lines = [head]
     if O.paused?
@@ -422,8 +437,10 @@ class OpenSpecDispatcher
       FileUtils.mkdir_p(O::BLOCKED_HISTORY_DIR)
       O.write_json_atomic(kept, record.merge('retried_at' => Time.now.utc.iso8601))
       FileUtils.rm_f(file)
+      # Only a retry of an exhausted conflict budget starts that budget over. An unrelated
+      # gate retry must not turn conflict_rebuilds into a new allowance every time.
       rebuilds = O.read_json(O.rebuild_file(change))
-      if rebuilds.is_a?(Hash) && rebuilds['rebuilds'].to_i.positive?
+      if record['reason'] == 'rebase_conflict' && rebuilds.is_a?(Hash) && rebuilds['rebuilds'].to_i.positive?
         O.write_json_atomic(O.rebuild_file(change), rebuilds.merge('rebuilds' => 0))
       end
       @results.delete(change)
@@ -822,7 +839,10 @@ class OpenSpecDispatcher
       rebase = O.git(['rebase', base_ref], chdir: wt, log: log)
       unless rebase.ok?
         O.git(%w[rebase --abort], chdir: wt)
-        raise O::Blocked.new(O.content_conflict?(rebase.out) ? 'rebase_conflict' : 'rebase_failed', rebase.out)
+        # Rebuilding a child cannot resolve contradictory umbrella artifacts. Retrying the
+        # identical rebase is a dead end; a person must reconcile the change's specs/plan.
+        reason = O.content_conflict?(rebase.out) ? 'spec_conflict' : 'rebase_failed'
+        raise O::Blocked.new(reason, rebase.out)
       end
       plan!(item, wt, log) if specs_moved # strict validation catches MODIFIED blocks made stale by the rebase
     end
@@ -1101,7 +1121,7 @@ class OpenSpecDispatcher
       return { reason: 'incomplete_tasks', details: "Tasks complete: #{entry&.values_at('completedTasks', 'totalTasks')&.join('/') || 'unknown'}" }
     end
 
-    gates = O.run(['bash', 'bin/run_gates.sh', '--base', base], chdir: wt, log: log, env: slot_env, timeout: GATE_TIMEOUT)
+    gates = O.run(['bash', O::RUN_GATES, '--base', base], chdir: wt, log: log, env: slot_env, timeout: GATE_TIMEOUT)
     return { reason: 'gate_failure', details: gates.tail(120) } unless gates.ok?
 
     coverage_failure(wt, change, log)
@@ -1251,7 +1271,7 @@ class OpenSpecDispatcher
   # The framework's authoring rules travel with the kit (config/templates/authoring_rules.md),
   # so openspec/config.yaml stays the project's own, as `openspec init` created it.
   def authoring_rules
-    @authoring_rules ||= read_or_empty(File.join(O::ROOT, OpenSpecPrompts::RULES))
+    @authoring_rules ||= read_or_empty(O.kit_file(OpenSpecPrompts::RULES))
   end
 
   # J4: agents may ask Jev their own yes/no questions while they work.

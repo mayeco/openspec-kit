@@ -37,6 +37,7 @@ require 'fileutils'
 require 'json'
 require 'shellwords'
 require 'yaml'
+require_relative 'settings'
 
 module OpenSpecAgents
   # name (the CLI's command) => what it is, the `openspec init --tools` id and the directory its skills live in.
@@ -111,6 +112,7 @@ module OpenSpecAgents
   # { 'agents' => [...], 'roles' => { role => agent }, 'permissions' => ... }, or nil without a config.
   def load(root)
     path = File.join(root, CONFIG)
+    path = File.join(OpenSpecSettings.main_root(root), CONFIG) unless File.exist?(path)
     return nil unless File.exist?(path)
 
     data = YAML.safe_load_file(path) || {}
@@ -132,7 +134,7 @@ module OpenSpecAgents
     else Shellwords.split(value.to_s)
     end
   rescue ArgumentError => e
-    warn "agents: extra_args.#{agent} cannot be split (#{e.message}); none used"
+    $stderr.puts "agents: extra_args.#{agent} cannot be split (#{e.message}); none used"
     []
   end
 
@@ -142,7 +144,7 @@ module OpenSpecAgents
     value = env['AGENT_ORDER'] || load(root)&.fetch('order') || DEFAULT_ORDER
     return value if ORDERS.include?(value)
 
-    warn "agents: unknown order #{value.inspect} (#{ORDERS.join(' | ')}); using fallback"
+    $stderr.puts "agents: unknown order #{value.inspect} (#{ORDERS.join(' | ')}); using fallback"
     'fallback'
   end
 
@@ -170,18 +172,20 @@ module OpenSpecAgents
     end
   end
 
+  def in_use_dir(root) = File.join(OpenSpecSettings.main_root(root), IN_USE)
+
   # The call <pid> moved on to <agent> (its fallback).
   def claim(root, agent, pid) = registry(root) { write_use(root, pid, agent) }
 
   # The call <pid> ended.
   def release(root, pid)
-    registry(root) { FileUtils.rm_f(File.join(root, IN_USE, pid.to_s)) }
+    registry(root) { FileUtils.rm_f(File.join(in_use_dir(root), pid.to_s)) }
   end
 
   # { agent => running calls }. The file of a call whose process is gone (killed before
   # it could release) is removed and does not count.
   def in_use(root)
-    Dir.glob(File.join(root, IN_USE, '*')).each_with_object(Hash.new(0)) do |file, running|
+    Dir.glob(File.join(in_use_dir(root), '*')).each_with_object(Hash.new(0)) do |file, running|
       pid = Integer(File.basename(file), exception: false) or next
       next FileUtils.rm_f(file) unless alive?(pid)
 
@@ -199,10 +203,10 @@ module OpenSpecAgents
     true
   end
 
-  def write_use(root, pid, agent) = File.write(File.join(root, IN_USE, pid.to_s), "#{agent}\n")
+  def write_use(root, pid, agent) = File.write(File.join(in_use_dir(root), pid.to_s), "#{agent}\n")
 
   def registry(root)
-    dir = File.join(root, IN_USE)
+    dir = in_use_dir(root)
     FileUtils.mkdir_p(dir)
     File.open(File.join(dir, '.lock'), File::RDWR | File::CREAT, 0o644) do |lock|
       lock.flock(File::LOCK_EX)
@@ -216,7 +220,7 @@ module OpenSpecAgents
     value = env['AGENT_PERMISSIONS'] || load(root)&.fetch('permissions') || DEFAULT_PERMISSIONS
     return value if PERMISSIONS.include?(value)
 
-    warn "agents: unknown permissions #{value.inspect} (#{PERMISSIONS.join(' | ')}); using restricted"
+    $stderr.puts "agents: unknown permissions #{value.inspect} (#{PERMISSIONS.join(' | ')}); using restricted"
     'restricted'
   end
 
@@ -243,7 +247,7 @@ module OpenSpecAgents
     lines = ['# The agents this application uses, written by install.sh (init, or upgrade --agents).',
              '# Each one gets the skills in its own directory. The scripts read the roles from here,',
              '# so the scheduled task always runs the same command. Change the agents with',
-             '# `<release>/bin/install.sh upgrade <app> --agents ...`; a role, the order and the permissions may be edited by hand.',
+             '# `openspec-kit update --agents ...`; a role, the order and the permissions may be edited by hand.',
              '# The agents the kit supports (an agent not listed in agents gets no skills here):',
              *SUPPORTED.map { |name, a| "#   #{name.ljust(SUPPORTED.keys.map(&:size).max)}  #{a['label'].ljust(SUPPORTED.values.map { |v| v['label'].size }.max)}  skills in #{a['skills']}/" },
              "agents: [#{agents.join(', ')}]",
@@ -278,7 +282,7 @@ module OpenSpecAgents
 end
 
 if __FILE__ == $PROGRAM_NAME
-  root = File.expand_path('../..', __dir__)
+  root = OpenSpecSettings.app_root
   begin
     case ARGV
     in ['engine', role] then puts OpenSpecAgents.engine(root, role)
@@ -291,12 +295,12 @@ if __FILE__ == $PROGRAM_NAME
     in ['release', pid] then OpenSpecAgents.release(root, Integer(pid))
     in ['in-use'] then puts OpenSpecAgents.registry(root) { OpenSpecAgents.in_use(root) }.sort.map { |a, n| n > 1 ? "#{a} #{n}" : a }.join(', ')
     else
-      warn 'Usage: ruby bin/lib/agents.rb engine <plan|build|cycle> | list | order | permissions | arrange <list> <pid> | ' \
+      $stderr.puts 'Usage: ruby bin/lib/agents.rb engine <plan|build|cycle> | list | order | permissions | arrange <list> <pid> | ' \
            'claim <agent> <pid> | release <pid> | in-use | extra-args <agent>'
       exit 2
     end
   rescue OpenSpecAgents::Error => e
-    warn "agents: #{e.message}"
+    $stderr.puts "agents: #{e.message}"
     exit 1
   end
 end

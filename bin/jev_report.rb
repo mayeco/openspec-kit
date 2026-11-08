@@ -198,7 +198,7 @@ if __FILE__ == $PROGRAM_NAME
     report = JevReport.report(CycleProgress.parse_since(options[:since]), options[:gate])
     puts(options[:json] ? JSON.pretty_generate(report) : JevReport.text(report))
   rescue ArgumentError => e
-    warn "jev_report: #{e.message}"
+    $stderr.puts "jev_report: #{e.message}"
     exit 2
   end
 end

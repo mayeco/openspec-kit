@@ -5,21 +5,21 @@ description: Sets up an application right after the OpenSpec orchestration kit w
 
 # OpenSpec kit init: from installed to ready to schedule
 
-The kit is already installed: `.openspec-kit.lock` exists, written by `<release>/bin/install.sh init`. If it does not, follow `INSTALL.md` first. Paths are relative to the application's root.
+The kit is already installed: `.openspec-kit.lock` exists, written by `openspec-kit init`. If it does not, follow `INSTALL.md` in `~/.openspec-kit` first. Paths are relative to the application's root.
 
 Work with the person who owns the application. Facts about the project come from them and from the repositories themselves; never invent features, commands or constraints.
 
 ## Rules
 
 - Never commit or push without the person's OK.
-- Never edit the kit's files: `bin/`, `config/templates/`, the `openspec-kit-*` skills, `INSTALL.md` and `SCHEDULING.md`.
+- Never edit the kit's `openspec-kit-*` skills.
 - In a child repository, touch only `repo.config.yaml` and its environment script. Never write secrets in them: both are committed.
 - A gate must pass on the repository's base branch today. A gate that always fails blocks every change, and one that is wrong lets broken changes through.
 
 ## 1. Where it stands
 
 ```bash
-ruby bin/app_setup.rb status        # --json for the exact items
+openspec-kit setup status        # --json for the exact items
 ```
 
 It lists, in order, what is done (`ok`), what is left (`todo`) with the command or file that resolves it, and warnings (`warn`). It ends with the next step and this application's own crontab line. Work through the `todo` items from the top, and run it again after each step.
@@ -39,8 +39,8 @@ Ask the person, read the repositories, then write:
 For each code repository of the application:
 
 ```bash
-ruby bin/app_setup.rb add-repo <url> [--name backend] [--branch main]   # a new submodule under repos/
-ruby bin/app_setup.rb repo <name>                                       # one already under repos/
+openspec-kit setup add-repo <url> [--name backend] [--branch main]   # a new submodule under repos/
+openspec-kit setup repo <name>                                       # one already under repos/
 ```
 
 It delivers the kit's templates:
@@ -53,8 +53,8 @@ An existing `repo.config.yaml` is kept unless `--force`. Then, for each reposito
 1. **Review every value with the person.** Fill in each `{{...}}` it could not detect; the gates skip placeholders with a warning. Keep `gates.test` fast: it runs twice per change, and `OPENSPEC_CHANGED_FILES` lists the changed files so it can run only the related tests. `regression.test` keeps the full suite for the cycle. When changes build in parallel, give each worker its own test database: `OPENSPEC_SLOT` becomes `TEST_ENV_NUMBER` in `script/env.sh`, the database name must use it, and the `setup` gate creates it. The template also has a `secrets` gate: keep it if `gitleaks` is installed, otherwise install it or remove the gate. In `script/env.sh`, export what the repository's commands need besides the toolchain (never secrets). Three optional keys: `requires` names the services the gates need (`postgres: "pg_isready -h localhost -p 5432"`), which the preflight checks before each cycle; `regression_when` lists the paths whose change runs the full regression at BUILD and merge (models, initializers, migrations); `service.prepare` readies the visual session's clone (`pnpm install --frozen-lockfile`, a database to migrate and seed, local configuration linked from `$OPENSPEC_MAIN_ROOT`).
 2. **Prove it works:**
    ```bash
-   bash bin/repo_exec.sh <name> true          # the environment loads
-   bash bin/run_gates.sh --repo <name>        # every gate passes
+   openspec-kit exec <name> true          # the environment loads
+   openspec-kit gates --repo <name>       # every gate passes
    ```
    When a gate fails on a clean checkout, fix the command, not the application's code, or ask the person.
 3. **Commit it in the child repository and push to its base branch**, with the person's OK. `add-repo` and `repo` print the exact commands.
@@ -62,7 +62,7 @@ An existing `repo.config.yaml` is kept unless `--force`. Then, for each reposito
 ## 4. Review the settings
 
 ```bash
-ruby bin/kit_config.rb check
+openspec-kit config check
 ```
 
 With the person, and the `openspec-kit-config` skill to explain and change each one, go through:
@@ -82,16 +82,16 @@ With the person's OK:
 git add -A && git commit -m "chore: set up the OpenSpec kit" && git push origin <base-branch>
 ```
 
-The application needs an `origin` remote: the merger and the cycle push to it. Its base branch is `base_branch` in `config/pipeline.yaml`, `master` by default; when the checkout is on another branch, `status` says so. Set it before this commit: `ruby bin/kit_config.rb set pipeline.base_branch main`.
+The application needs an `origin` remote: the merger and the cycle push to it. Its base branch is `base_branch` in `config/pipeline.yaml`, `master` by default; when the checkout is on another branch, `status` says so. Set it before this commit: `openspec-kit config set pipeline.base_branch main`.
 
 ## 6. Check and schedule
 
 1. Run the preflight. It must end with `preflight: OK`; otherwise log in the agent CLI it names, or fix what it reports:
    ```bash
-   bash bin/check_ai_engines.sh
+   openspec-kit preflight
    ```
-2. Optionally, queue one small item in `config/agent_backlog.json` and run it by hand: `ruby bin/openspec_dispatcher.rb`, then `ruby bin/openspec_merger.rb` (`INSTALL.md`, section 8).
-3. Run one cycle and watch it: `bash bin/run_cycle.sh`.
-4. Schedule the cycle hourly, with the crontab line `status` prints, and the visual QA session in the Claude app or Hermes. `SCHEDULING.md` has every step.
+2. Optionally, queue one small item in `config/agent_backlog.json` and run it by hand: `openspec-kit dispatch`, then `openspec-kit merge`.
+3. Run one cycle and watch it: `openspec-kit cycle`.
+4. Schedule the cycle hourly, with the crontab line `status` prints, and the visual QA session in the Claude app or Hermes.
 
 When `status` has no `todo` left, the setup is done. From then on, the `openspec-kit-status` skill tells how the pipeline is going.

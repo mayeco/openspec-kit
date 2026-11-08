@@ -7,7 +7,10 @@
 # pointer move, completed tasks, the lessons workers left in handoff.md and the
 # repair rounds the dispatcher recorded in repairs.md: the evidence behind them.
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 BASE="${1:?usage: completed_since.sh <BASE_SHA> [HEAD_REF]}"
 HEAD_REF="${2:-HEAD}"
 

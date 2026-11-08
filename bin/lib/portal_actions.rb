@@ -60,7 +60,7 @@ module OpenSpecPortal
 
   def run_health_check(services_only: false, timeout: 240)
     ensure_dirs!
-    args = ['bash', File.join(ROOT, 'bin', 'check_ai_engines.sh')]
+    args = ['bash', O.kit_file('bin/check_ai_engines.sh')]
     args << '--services' if services_only
     res = sh(*args, timeout: timeout)
     summary = res.out.lines.reverse.find { |l| l.start_with?('preflight:') }&.strip || (res.ok? ? 'preflight: OK' : 'preflight: FAIL')
@@ -118,7 +118,7 @@ module OpenSpecPortal
     meta['relation'] = relation if relation
     meta['summary'] = summary if summary
     O.write_json_atomic(meta_file, meta)
-    cmd = ['bash', File.join(ROOT, 'bin', 'agent_exec.sh'), workdir, prompt_file]
+    cmd = ['bash', O::AGENT_EXEC, workdir, prompt_file]
     cmd << chosen unless chosen.empty?
 
     if async
@@ -251,12 +251,12 @@ module OpenSpecPortal
     stop_process!(File.join(JOBS_DIR, "#{id}.json"))
   end
 
-  def start_job(kind, *cmd)
+  def start_job(kind, *cmd, chdir: ROOT)
     ensure_dirs!
     id = "#{Time.now.utc.strftime('%Y%m%dT%H%M%SZ')}-#{kind}-#{SecureRandom.hex(2)}"
     out_file = File.join(JOBS_DIR, "#{id}.out.log")
     meta_file = File.join(JOBS_DIR, "#{id}.json")
-    pid = Process.spawn({ 'PATH' => PATH_ENV }, *cmd.map(&:to_s), chdir: ROOT,
+    pid = Process.spawn({ 'PATH' => PATH_ENV }, *cmd.map(&:to_s), chdir: chdir,
                         out: [out_file, 'w'], err: [:child, :out], in: File::NULL, pgroup: true)
     meta = { 'id' => id, 'kind' => kind, 'command' => cmd.join(' '), 'pid' => pid, 'started_at' => now, 'status' => 'running' }
     O.write_json_atomic(meta_file, meta)
@@ -389,7 +389,7 @@ module OpenSpecPortal
     wt = File.join(O::WORKTREE_BASE, "worker-#{name}")
     raise ArgumentError, "worktree #{wt} does not exist" unless File.directory?(wt)
 
-    start_job("gates-#{name}", 'bash', File.join(wt, 'bin', 'run_gates.sh'), '--base', "#{O::REMOTE}/#{O::BASE_BRANCH}")
+    start_job("gates-#{name}", 'bash', OpenSpecSettings.kit_file('bin/run_gates.sh', wt), '--base', "#{O::REMOTE}/#{O::BASE_BRANCH}", chdir: wt)
   end
 
   def reset_worker!(change_name)

@@ -33,12 +33,17 @@ set -euo pipefail
 WORKDIR="${1:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT_FILE="${2:?usage: agent_exec.sh <workdir> <prompt-file> [engine]}"
 PROMPT="$(cat "$PROMPT_FILE")"
-SETTINGS="$(dirname "$0")/lib/settings.rb"   # config/pipeline.yaml
-LIMIT="$(ruby "$SETTINGS" get limits.agent_seconds)"
-IDLE_LIMIT="$(ruby "$SETTINGS" get limits.agent_idle_seconds)"   # 0: no watchdog
-PERMISSIONS="$(ruby "$(dirname "$0")/lib/agents.rb" permissions)"
-AGENTS_RB="$(cd "$(dirname "$0")" && pwd)/lib/agents.rb"   # absolute: this script cds into the work directory
-ORDER="$(ruby "$AGENTS_RB" order)"   # fallback | random | spread
+KIT_BIN="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_BIN/lib/record.sh"
+APP_ROOT="$(cd "$WORKDIR" && app_root)"
+[ -f "$APP_ROOT/config/agents.yaml" ] || [ -f "$APP_ROOT/config/pipeline.yaml" ] || APP_ROOT="$(app_root)"
+SETTINGS="$KIT_BIN/lib/settings.rb"   # config/pipeline.yaml
+AGENTS_RB="$KIT_BIN/lib/agents.rb"    # absolute: this script cds into the work directory
+LIMIT="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$SETTINGS" get limits.agent_seconds)"
+IDLE_LIMIT="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$SETTINGS" get limits.agent_idle_seconds)"   # 0: no watchdog
+PERMISSIONS="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" permissions)"
+ORDER="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" order)"   # fallback | random | spread
 
 ENGINES="${3:-${AGENT_ENGINE:-}}"
 if [ -z "$ENGINES" ]; then
@@ -58,7 +63,7 @@ forward_signal() { [ -n "$TIMEOUT_PID" ] && kill -TERM "$TIMEOUT_PID" 2>/dev/nul
 # Without GNU timeout, bin/lib/bounded.rb does what it does: the agent's process group gets
 # TERM at the limit (or on a forwarded signal) and KILL 60 seconds later, and the watchdog
 # below still runs. Before, such a machine ran every agent call with no limit at all.
-BOUNDED_RB="$(cd "$(dirname "$0")" && pwd)/lib/bounded.rb"   # absolute: this script cds into the work directory
+BOUNDED_RB="$KIT_BIN/lib/bounded.rb"   # absolute: this script cds into the work directory
 bounded() {
   if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" --kill-after=60 "$LIMIT" "$@" &
   else ruby "$BOUNDED_RB" "$LIMIT" 60 "$@" &
@@ -150,7 +155,7 @@ activity_state() {
 # files, run gates, inspect git state and query read-only cycle helpers. Jev (a
 # calibrated judge, not an engine) is allowed there for read-only questions
 # only; auth, config, update and batch subcommands stay denied by omission.
-CLAUDE_ALLOWED="${CLAUDE_ALLOWED_TOOLS:-Read Edit Write Glob Grep Bash(openspec *) Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git show *) Bash(git rev-parse *) Bash(bash bin/run_gates.sh *) Bash(bash bin/cycle_status.sh *) Bash(bash bin/completed_since.sh *) Bash(ruby bin/visual_qa.rb request *) Bash(jev noul *) Bash(jev choice *) Bash(jev score *) Bash(jev eval *) Bash(jev validate *)}"
+CLAUDE_ALLOWED="${CLAUDE_ALLOWED_TOOLS:-Read Edit Write Glob Grep Bash(openspec *) Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git show *) Bash(git rev-parse *) Bash(openspec-kit gates *) Bash(openspec-kit exec *) Bash(openspec-kit status *) Bash(openspec-kit progress *) Bash(openspec-kit completed-since *) Bash(openspec-kit jev-report *) Bash(openspec-kit prompt-report *) Bash(openspec-kit memory *) Bash(openspec-kit visual-qa *) Bash(bash bin/run_gates.sh *) Bash(bash bin/repo_exec.sh *) Bash(bash bin/cycle_status.sh *) Bash(bash bin/completed_since.sh *) Bash(ruby bin/visual_qa.rb *) Bash(jev noul *) Bash(jev choice *) Bash(jev score *) Bash(jev eval *) Bash(jev validate *)}"
 CLAUDE_DENIED="${CLAUDE_DISALLOWED_TOOLS:-Bash(git commit *) Bash(git push *) Bash(git rebase *) Bash(git reset *) Bash(git checkout *) Bash(git switch *) Bash(rm -rf *)}"
 # Copilot needs --allow-all-tools to run headless; deny rules take precedence over it.
 COPILOT_DENIED="${COPILOT_DENIED_TOOLS:-shell(git commit),shell(git push),shell(git rebase),shell(git reset),shell(git checkout),shell(git switch)}"
@@ -168,8 +173,13 @@ tree_state() {
 # Out of quota or credits, or over a usage limit: such limits reset in hours, so trying the
 # engine again after limits.agent_retry_delay_seconds would only fail again. Only the end
 # of the attempt's output is read, where an engine says why it stopped.
-QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota|reached your [a-z ]*(quota|limit)|insufficient (balance|credits)'
+QUOTA_PATTERN='hit your [a-z ]*limit|usage limit|session limit|weekly limit|out of credits|credit balance is too low|insufficient_quota|quota exceeded|exceeded your current quota|reached your [a-z ]*(quota|limit)|individual quota reached|insufficient (balance|credits)'
 out_of_quota() { tail -n 40 "$ATTEMPT_OUT" | grep -qiE "$QUOTA_PATTERN"; }
+
+# A missing login or provider cannot heal by repeating the same call a few seconds later.
+# As above, only the end of this attempt's output is classified, not the prompt or old output.
+ENGINE_CONFIG_PATTERN='authentication (failed|timed out)|not authenticated|not logged in|no providers configured|no authentication information found|unauthenticated'
+engine_config_failure() { tail -n 40 "$ATTEMPT_OUT" | grep -qiE "$ENGINE_CONFIG_PATTERN"; }
 
 # What a failed attempt left, for the next one: every changed path and the size of each change.
 changes_left() {
@@ -207,7 +217,7 @@ run_engine() { # <engine>
   # model, a provider), placed before the prompt. ${EXTRA[@]+...} keeps an empty list
   # harmless under set -u in bash 3.2.
   EXTRA=()
-  while IFS= read -r -d '' arg; do EXTRA+=("$arg"); done < <(ruby "$AGENTS_RB" extra-args "$ENGINE" 2>/dev/null)
+  while IFS= read -r -d '' arg; do EXTRA+=("$arg"); done < <(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" extra-args "$ENGINE" 2>/dev/null)
   [ "${#EXTRA[@]}" -eq 0 ] || echo "agent_exec: $ENGINE extra_args: ${EXTRA[*]}" >&2
   case "$ENGINE" in
     claude)
@@ -220,7 +230,7 @@ run_engine() { # <engine>
         --output-format json \
         "${MODE[@]}" \
         --disallowedTools "$CLAUDE_DENIED" \
-        --max-budget-usd "$(ruby "$SETTINGS" get limits.agent_budget_usd)" \
+        --max-budget-usd "$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$SETTINGS" get limits.agent_budget_usd)" \
         --no-session-persistence ${EXTRA[@]+"${EXTRA[@]}"}
       ;;
     hermes)
@@ -328,15 +338,15 @@ run_engine() { # <engine>
 
 cd "$WORKDIR"
 [ -n "$ENGINES" ] || { echo "agent_exec: no AI engine available (set AGENT_ENGINE)" >&2; exit 127; }
-RETRIES="$(ruby "$SETTINGS" get limits.agent_retries)"
-RETRY_DELAY="$(ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
+RETRIES="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$SETTINGS" get limits.agent_retries)"
+RETRY_DELAY="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$SETTINGS" get limits.agent_retry_delay_seconds)"
 BASE_PROMPT="$PROMPT"
 RUN_PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-prompt.XXXXXX")" # the stub reads its prompt from a file
 ATTEMPT_OUT="$(mktemp "${TMPDIR:-/tmp}/agent-out.XXXXXX")" # one attempt's output, read for a usage limit
 IDLE_MARK="$(mktemp "${TMPDIR:-/tmp}/agent-idle.XXXXXX")" # non-empty once the watchdog stopped an engine
-trap 'stop_watch; rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT" "$IDLE_MARK"; ruby "$AGENTS_RB" release $$ 2>/dev/null' EXIT
+trap 'stop_watch; rm -f "$RUN_PROMPT_FILE" "$ATTEMPT_OUT" "$IDLE_MARK"; OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" release $$ 2>/dev/null' EXIT
 # The engines in the order this call tries them; the first is registered as run by this call.
-ARRANGED="$(ruby "$AGENTS_RB" arrange "$ENGINES" $$)" || ARRANGED="$ENGINES"
+ARRANGED="$(OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" arrange "$ENGINES" $$)" || ARRANGED="$ENGINES"
 IFS=',' read -ra LIST <<< "$ARRANGED"
 [ "$ORDER" = fallback ] || [ "${#LIST[@]}" -lt 2 ] || echo "agent_exec: order $ORDER: $ARRANGED" >&2
 START="$(tree_state)"
@@ -345,7 +355,7 @@ ran=0
 for i in "${!LIST[@]}"; do
   engine="$(printf '%s' "${LIST[$i]}" | tr -d '[:space:]')"
   [ -n "$engine" ] || continue
-  [ "$i" -eq 0 ] || ruby "$AGENTS_RB" claim "$engine" $$ 2>/dev/null || true # the fallback runs now
+  [ "$i" -eq 0 ] || OPENSPEC_APP_ROOT="$APP_ROOT" ruby "$AGENTS_RB" claim "$engine" $$ 2>/dev/null || true # the fallback runs now
   try=0
   while :; do
     printf '%s' "$PROMPT" > "$RUN_PROMPT_FILE"
@@ -371,6 +381,10 @@ $(continuation_note "$engine ($reason)")"
     fi
     if out_of_quota; then
       echo "agent_exec: $engine is out of quota or over a usage limit; not trying it again" >&2
+      break
+    fi
+    if engine_config_failure; then
+      echo "agent_exec: $engine has an authentication or provider configuration failure; not trying it again" >&2
       break
     fi
     try=$((try + 1))

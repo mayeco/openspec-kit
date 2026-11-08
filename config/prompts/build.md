@@ -12,8 +12,8 @@ commit it. The dispatcher fills these placeholders:
                        never learn what to fix
   {{rebuild}}          when the change is rebuilt on a new base after a rebase conflict, where its
                        old code is; keep it, or a rebuild starts from nothing
-This comment never reaches the agent. `ruby bin/kit_config.rb check` checks the placeholders, and
-`ruby bin/lib/prompts.rb render build change=demo branch=feat/spec-demo` shows the result.
+This comment never reaches the agent. `openspec-kit config check` checks the placeholders, and
+`openspec-kit prompts render build change=demo branch=feat/spec-demo` shows the result.
 -->
 You are the IMPLEMENTATION agent for OpenSpec change "{{change}}" in this git worktree.
 
@@ -23,7 +23,7 @@ Follow the openspec-apply-change workflow: run `openspec instructions apply --ch
 and implement the pending tasks in order.
 - Application code lives in the child repositories under repos/, each already on branch {{branch}}.
 - Pair every behavior change with automated tests. Mark a task `- [x]` only after its verification passes.
-- Run `bash bin/run_gates.sh` before you finish and fix every failure.
+- Run `openspec-kit gates` before you finish and fix every failure.
 - Keep logs and scratch files (gate output, notes, downloads) under `$TMPDIR`, this change's own directory
   outside the worktree. Anything you leave outside repos/ and openspec/changes/{{change}}/ fails
   verification, and anything inside repos/ is committed with the code.

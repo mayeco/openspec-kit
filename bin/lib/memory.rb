@@ -21,6 +21,7 @@
 
 require 'digest'
 require 'yaml'
+require_relative 'settings'
 
 module OpenSpecMemory
   FILE = 'MEMORY.md'
@@ -95,7 +96,7 @@ module OpenSpecMemory
 end
 
 if __FILE__ == $PROGRAM_NAME
-  root = File.expand_path('../..', __dir__)
+  root = OpenSpecSettings.app_root
   case ARGV
   in ['status']
     OpenSpecMemory.sizes(root).each do |file, chars, cap|
@@ -105,7 +106,7 @@ if __FILE__ == $PROGRAM_NAME
   in ['fingerprint']
     puts OpenSpecMemory.fingerprint(root)
   else
-    warn 'Usage: ruby bin/lib/memory.rb status | fingerprint'
+    $stderr.puts 'Usage: ruby bin/lib/memory.rb status | fingerprint'
     exit 2
   end
 end

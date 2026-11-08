@@ -19,6 +19,7 @@
 require 'yaml'
 
 module OpenSpecSettings
+  KIT_ROOT = File.expand_path('../..', __dir__)
   FILE = 'config/pipeline.yaml'
   # key => [the environment variable that overrides it, the default]
   KEYS = {
@@ -49,11 +50,49 @@ module OpenSpecSettings
 
   module_function
 
+  # The application checkout or worktree that contains `dir` (walking up until
+  # .openspec-kit.lock, config/pipeline.yaml, config/agents.yaml or openspec/ is
+  # found), or `dir` itself.
+  def app_root(dir = Dir.pwd)
+    return File.expand_path(ENV['OPENSPEC_APP_ROOT']) unless ENV['OPENSPEC_APP_ROOT'].to_s.empty?
+
+    cur = File.expand_path(dir)
+    loop do
+      if File.exist?(File.join(cur, '.openspec-kit.lock')) ||
+         File.exist?(File.join(cur, 'config', 'pipeline.yaml')) ||
+         File.exist?(File.join(cur, 'config', 'agents.yaml')) ||
+         File.directory?(File.join(cur, 'openspec'))
+        return cur
+      end
+      break if File.exist?(File.join(cur, '.git')) && File.basename(File.dirname(cur)) != 'repos'
+
+      parent = File.dirname(cur)
+      break if parent == cur
+
+      cur = parent
+    end
+    File.expand_path(dir)
+  end
+
+  # When `root` is an isolated worktree under <main>/.worktrees/<name>, the main
+  # checkout is two levels up; otherwise `root` itself.
+  def main_root(root = app_root)
+    File.basename(File.dirname(root)) == '.worktrees' ? File.dirname(File.dirname(root)) : root
+  end
+
+  # A kit file (config/templates/..., bin/...) in `root` when present there,
+  # otherwise in the kit's own checkout (KIT_ROOT).
+  def kit_file(rel, root = app_root)
+    local = File.join(root, rel)
+    File.exist?(local) ? local : File.join(KIT_ROOT, rel)
+  end
+
   def load(root)
     path = File.join(root, FILE)
+    path = File.join(main_root(root), FILE) unless File.exist?(path)
     File.exist?(path) ? (YAML.safe_load_file(path) || {}) : {}
   rescue Psych::Exception => e
-    warn "settings: #{FILE} is not valid YAML (#{e.message.lines.first.strip}); using the defaults"
+    $stderr.puts "settings: #{FILE} is not valid YAML (#{e.message.lines.first.strip}); using the defaults"
     {}
   end
 
@@ -67,7 +106,7 @@ module OpenSpecSettings
     value = parse(key, raw)
     return value unless value.nil?
 
-    warn "settings: #{source} must be #{expected(key)}, not #{raw.inspect}; using #{default}"
+    $stderr.puts "settings: #{source} must be #{expected(key)}, not #{raw.inspect}; using #{default}"
     default
   end
 
@@ -94,17 +133,17 @@ module OpenSpecSettings
 end
 
 if __FILE__ == $PROGRAM_NAME
-  root = File.expand_path('../..', __dir__)
+  root = OpenSpecSettings.app_root
   case ARGV
   in ['get', key]
     begin
       puts OpenSpecSettings.get(root, key)
     rescue OpenSpecSettings::Error => e
-      warn "settings: #{e.message}"
+      $stderr.puts "settings: #{e.message}"
       exit 2
     end
   else
-    warn 'Usage: ruby bin/lib/settings.rb get <key>'
+    $stderr.puts 'Usage: ruby bin/lib/settings.rb get <key>'
     exit 2
   end
 end

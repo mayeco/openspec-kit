@@ -2,7 +2,7 @@
 # config/pipeline.yaml - How the pipeline runs: base branch, parallelism, limits
 # ==============================================================================
 # Seed: created once by install.sh, then owned by this application. Humans edit
-# it (ruby bin/kit_config.rb set pipeline.<key> <value>); the dispatcher, the
+# it (openspec-kit config set pipeline.<key> <value>); the dispatcher, the
 # merger, the cycle and the visual QA session read it on every run, so a
 # scheduled command never carries a setting. The environment variable named
 # after each key overrides it for one manual run only.

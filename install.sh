@@ -12,11 +12,12 @@
 #   exec "$HOME/.openspec-kit/bin/openspec-kit" "$@"
 #
 # Once installed, run from anywhere:
-#   openspec-kit init <app-dir> --agents claude,hermes ...
-#   openspec-kit update <app-dir> [--agents ...]
+#   openspec-kit init [<app-dir>] --agents claude,hermes ...
+#   openspec-kit update [<app-dir>] [--agents ...]
 #   openspec-kit self-upgrade [<tag-or-branch>]
 #   openspec-kit verify [<app-dir>]
-#   openspec-kit portal
+#   openspec-kit cycle [--detach]
+#   openspec-kit status | progress | gates | exec | config | setup | proposals | visual-qa | portal
 set -eu
 
 KIT_HOME="${OPENSPEC_KIT_HOME:-$HOME/.openspec-kit}"
@@ -74,6 +75,6 @@ case ":${PATH:-}:" in
   *) echo "openspec-kit: add $BIN_DIR to your PATH (export PATH=\"$BIN_DIR:\$PATH\")" ;;
 esac
 echo "next:"
-echo "  openspec-kit init <app-dir> --agents claude"
-echo "  openspec-kit update <app-dir>"
+echo "  openspec-kit init [<app-dir>] --agents claude"
+echo "  openspec-kit update [<app-dir>]"
 echo "  openspec-kit self-upgrade"

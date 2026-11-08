@@ -120,7 +120,7 @@ if __FILE__ == $PROGRAM_NAME
     report = PromptReport.report(CycleProgress.parse_since(options[:since]), options[:by])
     puts(options[:json] ? JSON.pretty_generate(report) : PromptReport.text(report))
   rescue ArgumentError => e
-    warn "prompt_report: #{e.message}"
+    $stderr.puts "prompt_report: #{e.message}"
     exit 2
   end
 end

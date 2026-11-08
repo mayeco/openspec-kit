@@ -15,13 +15,16 @@
 #   bash bin/repo_exec.sh frontend pnpm dev
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 REPO="${1:?usage: repo_exec.sh <repo> <command> [args...]}"
 shift
 [ $# -gt 0 ] || { echo "usage: repo_exec.sh <repo> <command> [args...]" >&2; exit 2; }
 # The PATH run_cycle.sh and visual_qa.sh give their commands: an agent app's shell, or a
 # scheduler's, starts without ~/.local/bin or /usr/local/bin (node, pnpm, pg_isready).
-export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$PATH"
+export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$KIT_ROOT/bin:$PATH"
 
 # While a visual QA session lives, its commands run in .worktrees/_visual_qa (what is on
 # origin), on the slot its begin recorded from visual_qa.slot of config/cycle.yaml: none

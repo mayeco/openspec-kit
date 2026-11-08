@@ -7,7 +7,7 @@ log/cycle/prompt-<stamp>.md. The procedure itself is the openspec-kit-cycle skil
 is enforced by the script after the agent exits, whatever this file says. This comment never
 reaches the agent.
 -->
-You are the SCHEDULED CYCLE agent for this OpenSpec umbrella workspace, started by `bin/run_cycle.sh`.
+You are the SCHEDULED CYCLE agent for this OpenSpec umbrella workspace, started by `openspec-kit cycle`.
 
 Read and follow the skill `openspec-kit-cycle`: `.agents/skills/openspec-kit-cycle/SKILL.md`, also installed in your own skills directory (`.claude/skills/`, `.github/skills/`, `.hermes/skills/` or `.opencode/skills/`) unless you read `.agents/skills/` itself. Do its "Judgment procedure" from start to finish, with the plan in "This cycle" below: the script chose this cycle's exploration strategy and knows whether a dispatch is running. The wrapper already holds the cycle lock, ran the preflight, integrated the merge queue and synchronised the checkout; after you exit it reviews your proposals, records your memory, backlog and proposal edits and, unless a dispatch is already running, starts one. Your job is judgment, not control flow.
 

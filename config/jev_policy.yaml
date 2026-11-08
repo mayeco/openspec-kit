@@ -4,7 +4,7 @@
 # Framework lane: humans edit this file. Jev answers typed questions with
 # probabilities, never text; this file turns those numbers into decisions.
 # Roll out every gate as `advisory`, review what it answered beside what happened to
-# each change (ruby bin/jev_report.rb), tune thresholds, then switch to `enforce`.
+# each change (openspec-kit jev-report), tune thresholds, then switch to `enforce`.
 
 model: jev-1.14.0 # pinned versioned id
 timeout: 30s # per attempt

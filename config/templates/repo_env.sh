@@ -4,9 +4,9 @@
 # ==============================================================================
 # Template: copy it into the child repository (for example as script/env.sh), set
 # `env_script` in its repo.config.yaml to that path, adapt it and commit it there.
-# bin/repo_exec.sh sources it from the repository root before every command of the
+# openspec-kit exec sources it from the repository root before every command of the
 # repository: its gates, its dev command, and what agents and QA skills run through
-# `bash bin/repo_exec.sh repos/<name> <command>`.
+# `openspec-kit exec repos/<name> <command>`.
 #
 # Why: schedulers, agents and gates run non-interactive shells, where the cd hooks
 # of RVM, rbenv, chruby, asdf, mise, nvm, pyenv or goenv never run, so `bundle exec`,

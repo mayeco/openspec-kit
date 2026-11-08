@@ -28,7 +28,7 @@ require_relative 'lib/openspec_orchestrator'
 Encoding.default_external = Encoding::UTF_8
 
 module CycleProgress
-  ROOT = File.expand_path('..', __dir__)
+  ROOT = OpenSpecOrchestrator::ROOT
   LOG = File.join(ROOT, 'log')
   CYCLE = File.join(LOG, 'cycle')
   OWN_LOCKS = %w[dispatcher merger].freeze
@@ -306,7 +306,7 @@ if __FILE__ == $PROGRAM_NAME
     report = CycleProgress.report(CycleProgress.parse_since(options[:since]))
     puts(options[:json] ? JSON.pretty_generate(report) : CycleProgress.text(report))
   rescue ArgumentError => e
-    warn "cycle_progress: #{e.message}"
+    $stderr.puts "cycle_progress: #{e.message}"
     exit 2
   end
 end

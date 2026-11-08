@@ -7,7 +7,7 @@ Curated long-term memory for this workspace. Every agent reads it on every call,
 ## 1. Project Conventions
 
 - **Topology**: application code lives in child repositories under `repos/`; specifications live only in this umbrella's `openspec/`.
-- **Quality gates**: each child repo declares its gates in `repos/<name>/repo.config.yaml`; `bash bin/run_gates.sh` runs the gates of the repos a change touched.
+- **Quality gates**: each child repo declares its gates in `repos/<name>/repo.config.yaml`; `openspec-kit gates` runs the gates of the repos a change touched.
 - **Scenarios**: every scenario header uses exactly four hashtags: `#### Scenario: <Name>`.
 - **Language**: all specifications, code, comments, documentation and commits are professional English.
 

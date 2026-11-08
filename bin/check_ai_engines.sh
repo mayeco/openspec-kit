@@ -13,9 +13,12 @@
 # question files are valid, and (only with JEV_REQUIRED=1) the judge is OK.
 #   bash bin/check_ai_engines.sh --services   # the required services only (bin/visual_qa.sh begin)
 set -o pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 cd "$ROOT" || exit 1
-export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$PATH"
+export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$KIT_ROOT/bin:$PATH"
 # GNU timeout is standard on Linux (coreutils); macOS ships without it or installs it as gtimeout.
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 # A cold start of an agent CLI can take a minute or more: a ping waits up to 3 minutes
@@ -28,7 +31,7 @@ PING_SECONDS="${OPENSPEC_PING_SECONDS:-180}"
 within() { # <seconds> <command...>
   local rc=0
   if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" --kill-after=10 "$@" || rc=$?
-  else ruby bin/lib/bounded.rb "$1" 10 "${@:2}" || rc=$?
+  else ruby "$KIT_ROOT/bin/lib/bounded.rb" "$1" 10 "${@:2}" || rc=$?
   fi
   [ "$rc" -eq 137 ] && rc=124 # KILLed once its time ran out
   return "$rc"
@@ -48,7 +51,7 @@ check_services() {
     while IFS=$'\t' read -r name cmd; do
       [ -n "$name" ] || continue
       any=1
-      if out="$(within 30 bash bin/repo_exec.sh "$ROOT/$rel" bash -c "$cmd" 2>&1)"; then
+      if out="$(within 30 bash "$KIT_ROOT/bin/repo_exec.sh" "$ROOT/$rel" bash -c "$cmd" 2>&1)"; then
         echo "  $rel $name: OK"
       else
         echo "  $rel $name: DOWN ($cmd: $(printf '%s' "$out" | grep -v '^[[:space:]]*$' | tail -1 | cut -c1-160))"
@@ -83,7 +86,7 @@ done
 echo "== Kit"
 # Kit files are replaced by upgrades and never edited in place: drift fails the preflight.
 KIT_OK=1
-ruby bin/openspec_kit.rb verify . 2>&1 | sed 's/^/  /'
+ruby "$KIT_ROOT/bin/openspec_kit.rb" verify . 2>&1 | sed 's/^/  /'
 [ "${PIPESTATUS[0]}" -eq 0 ] || KIT_OK=0
 
 echo "== Services"
@@ -92,10 +95,10 @@ check_services
 echo "== Agent engines"
 # The agents config/agents.yaml selects, plus any engine an AGENT_ENGINE* override
 # gives a role; without the file, every supported engine that is installed.
-SELECTED="$(ruby bin/lib/agents.rb list 2>/dev/null)"
+SELECTED="$(ruby "$KIT_ROOT/bin/lib/agents.rb" list 2>/dev/null)"
 ROLES=""
 for role in plan build cycle; do
-  engine="$(ruby bin/lib/agents.rb engine "$role" 2>/dev/null)"   # claude,hermes: in order of preference
+  engine="$(ruby "$KIT_ROOT/bin/lib/agents.rb" engine "$role" 2>/dev/null)"   # claude,hermes: in order of preference
   ROLES="$ROLES $role:${engine:-first-available}"
   [ -n "$SELECTED" ] && [ -n "$engine" ] && SELECTED="$SELECTED ${engine//,/ }"
 done
@@ -108,7 +111,7 @@ probe() { # <name> <command...>, with @EXTRA@ where agent_exec.sh puts the agent
   # The ping runs as the pipeline's calls do: with the application's extra_args (a model the
   # agent only answers with, for example), in the same place.
   local extra=() cmd=() arg
-  while IFS= read -r -d '' arg; do extra+=("$arg"); done < <(ruby bin/lib/agents.rb extra-args "$name" 2>/dev/null)
+  while IFS= read -r -d '' arg; do extra+=("$arg"); done < <(ruby "$KIT_ROOT/bin/lib/agents.rb" extra-args "$name" 2>/dev/null)
   for arg in "$@"; do
     if [ "$arg" = @EXTRA@ ]; then cmd+=(${extra[@]+"${extra[@]}"}); else cmd+=("$arg"); fi
   done
@@ -155,17 +158,19 @@ for pair in $ROLES; do
   fi
 done
 echo "  roles:$ROLES"
-echo "  order: $(ruby bin/lib/agents.rb order 2>/dev/null)"
+echo "  order: $(ruby "$KIT_ROOT/bin/lib/agents.rb" order 2>/dev/null)"
 
 # Jev is a judge, not an agent engine: it answers typed questions with
 # probabilities and never writes code, so it does not count toward WORKING.
 echo "== Judge (jev)"
 JUDGE=off   # ok | off | missing | invalid | auth | drift | unavailable
+JEV_TEMPLATES="$KIT_ROOT/config/templates/jev"
+[ -d config/templates/jev ] && JEV_TEMPLATES=config/templates/jev
 if [ "${JEV_DISABLED:-0}" = 1 ]; then
   echo "  jev: disabled (JEV_DISABLED=1)"
 elif ! command -v jev >/dev/null 2>&1; then
   echo "  jev: not installed (see INSTALL.md)"; JUDGE=missing
-elif [ ! -f config/templates/jev/canary.yaml ]; then
+elif [ ! -f "$JEV_TEMPLATES/canary.yaml" ]; then
   echo "  jev: config/templates/jev/ not installed; skipped"
 else
   JUDGE=ok
@@ -173,7 +178,7 @@ else
   echo "  jev: CLI $(jev version -o json 2>/dev/null | ruby -rjson -e 'puts JSON.parse(STDIN.read)["version"]' 2>/dev/null), model ${JEV_MODEL}"
 
   # 1. Offline and free: every question file must pass strict validation.
-  for f in config/templates/jev/*.yaml; do
+  for f in "$JEV_TEMPLATES"/*.yaml; do
     if ! jev validate -f "$f" --strict -o json --quiet >/dev/null 2>&1; then
       echo "  jev: INVALID question file $f (see: jev validate -f $f --strict)"; JUDGE=invalid
     fi
@@ -181,7 +186,7 @@ else
 
   # 2. Live canary: an obvious yes and an obvious no in one call (about $0.00002).
   if [ "$JUDGE" = ok ]; then
-    OUT="$(bounded jev eval -f config/templates/jev/canary.yaml --model "$JEV_MODEL" -o json --quiet --no-input \
+    OUT="$(bounded jev eval -f "$JEV_TEMPLATES/canary.yaml" --model "$JEV_MODEL" -o json --quiet --no-input \
              --assert "all_gates_passed >= 0.8" --assert "reports_failure <= 0.2" 2>&1)"
     RC=$?
     SUMMARY="$(printf '%s' "$OUT" | ruby -rjson -e '

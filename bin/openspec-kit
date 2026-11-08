@@ -10,10 +10,30 @@
 #   exec "$HOME/.openspec-kit/bin/openspec-kit" "$@"
 #
 # Commands:
-#   openspec-kit init <app-dir> --agents LIST [--plan A --build A --cycle A] [--order ORDER] [--force]
-#   openspec-kit update|upgrade <app-dir> [--agents LIST ...] [--force]
+#   openspec-kit init [<app-dir>] --agents LIST [--plan A --build A --cycle A] [--order ORDER] [--force]
+#   openspec-kit update|upgrade [<app-dir>] [--agents LIST ...] [--force]
 #   openspec-kit self-upgrade [<tag-or-branch>]
 #   openspec-kit verify [<app-dir>]
+#   openspec-kit cycle [--detach]
+#   openspec-kit visual-qa begin | end | status | request "<what>" [--change <name>] | done <id> <verdict> ["<note>"] | enqueue-integrated
+#   openspec-kit gates [--all] [--regression] [--base <ref>] [--repo <name>]
+#   openspec-kit exec <repo> <command> [args...]
+#   openspec-kit status
+#   openspec-kit progress [--since 24h|90m|7d|<time>] [--json]
+#   openspec-kit config show [<section>] [--json] | check [--json] | set <file>.<key> <value> [--dry-run]
+#   openspec-kit setup status [--json] | add-repo <url> [--name <name>] [--branch <branch>] | repo <name> [--force]
+#   openspec-kit proposals review | list | show <change> | approve <change> | reject <change> | rebase <base> | carry <checkout>
+#   openspec-kit preflight [--services]
+#   openspec-kit dispatch [--workers N] [--wait] [--dry-run] [--json]
+#   openspec-kit merge [--watch [--interval SECONDS]]
+#   openspec-kit sync [--publish]
+#   openspec-kit completed-since <base-sha> [<head-ref>]
+#   openspec-kit jev-report [--since <period>] [--gate <name>] [--json]
+#   openspec-kit prompt-report [--since <period>] [--by prompt|memory] [--json]
+#   openspec-kit prompts check | render <plan|build|cycle> [k=v ...] | version <plan|build|cycle>
+#   openspec-kit memory status | fingerprint
+#   openspec-kit agents engine <role> | list | order | permissions | in-use | extra-args <agent>
+#   openspec-kit settings get <key>
 #   openspec-kit portal [--port 4567] [--bind 127.0.0.1]
 #   openspec-kit version
 # Environment overrides (for tests or custom locations):
@@ -28,8 +48,7 @@ BIN_DIR="${OPENSPEC_KIT_BIN_DIR:-$HOME/.local/bin}"
 REPO_URL="${OPENSPEC_KIT_REPO:-https://github.com/mayeco/openspec-kit.git}"
 
 # When run from a release checkout (such as ~/.openspec-kit/bin/openspec-kit),
-# use that checkout; when run from an application's bin/, use $KIT_HOME for
-# install, update and self-upgrade.
+# use that checkout; otherwise use $KIT_HOME for install, update and self-upgrade.
 if [ -f "$SELF_ROOT/MANIFEST.json" ]; then
   RELEASE="$SELF_ROOT"
 else
@@ -96,26 +115,89 @@ case "$cmd" in
     echo "openspec-kit: $KIT_HOME is at v$ver ($BIN_DIR/openspec-kit)"
     ;;
   verify)
-    target="${1:-.}"
-    if [ -f "$target/bin/openspec_kit.rb" ]; then
-      exec ruby "$target/bin/openspec_kit.rb" verify "$target"
-    else
-      exec ruby "$SELF_ROOT/bin/openspec_kit.rb" verify "$target"
-    fi
+    exec ruby "$SELF_ROOT/bin/openspec_kit.rb" verify "$@"
+    ;;
+  cycle)
+    exec bash "$SELF_ROOT/bin/run_cycle.sh" "$@"
+    ;;
+  visual-qa|visual_qa)
+    case "${1:-}" in
+      begin|end) exec bash "$SELF_ROOT/bin/visual_qa.sh" "$@" ;;
+      *)         exec ruby "$SELF_ROOT/bin/visual_qa.rb" "$@" ;;
+    esac
+    ;;
+  gates)
+    exec bash "$SELF_ROOT/bin/run_gates.sh" "$@"
+    ;;
+  exec|repo-exec)
+    exec bash "$SELF_ROOT/bin/repo_exec.sh" "$@"
+    ;;
+  status)
+    exec bash "$SELF_ROOT/bin/cycle_status.sh" "$@"
+    ;;
+  progress)
+    exec ruby "$SELF_ROOT/bin/cycle_progress.rb" "$@"
+    ;;
+  config)
+    exec ruby "$SELF_ROOT/bin/kit_config.rb" "$@"
+    ;;
+  setup)
+    exec ruby "$SELF_ROOT/bin/app_setup.rb" "$@"
+    ;;
+  proposals)
+    exec ruby "$SELF_ROOT/bin/proposals.rb" "$@"
+    ;;
+  preflight|check-engines)
+    exec bash "$SELF_ROOT/bin/check_ai_engines.sh" "$@"
+    ;;
+  dispatch)
+    exec ruby "$SELF_ROOT/bin/openspec_dispatcher.rb" "$@"
+    ;;
+  merge)
+    exec ruby "$SELF_ROOT/bin/openspec_merger.rb" "$@"
+    ;;
+  sync)
+    exec bash "$SELF_ROOT/bin/sync_repos.sh" "$@"
+    ;;
+  completed-since)
+    exec bash "$SELF_ROOT/bin/completed_since.sh" "$@"
+    ;;
+  jev-report)
+    exec ruby "$SELF_ROOT/bin/jev_report.rb" "$@"
+    ;;
+  prompt-report)
+    exec ruby "$SELF_ROOT/bin/prompt_report.rb" "$@"
+    ;;
+  prompts)
+    exec ruby "$SELF_ROOT/bin/lib/prompts.rb" "$@"
+    ;;
+  memory)
+    exec ruby "$SELF_ROOT/bin/lib/memory.rb" "$@"
+    ;;
+  agents)
+    exec ruby "$SELF_ROOT/bin/lib/agents.rb" "$@"
+    ;;
+  settings)
+    exec ruby "$SELF_ROOT/bin/lib/settings.rb" "$@"
+    ;;
+  agent-exec)
+    exec bash "$SELF_ROOT/bin/agent_exec.sh" "$@"
+    ;;
+  jev-contract)
+    exec bash "$SELF_ROOT/bin/jev_contract.sh" "$@"
+    ;;
+  cycle-prompt)
+    exec ruby "$SELF_ROOT/bin/cycle_prompt.rb" "$@"
     ;;
   portal)
-    if [ -f "./bin/portal.rb" ]; then
-      exec ruby "./bin/portal.rb" "$@"
-    else
-      exec ruby "$SELF_ROOT/bin/portal.rb" "$@"
-    fi
+    exec ruby "$SELF_ROOT/bin/portal.rb" "$@"
     ;;
   version|-v|--version)
     ver="$(ruby -rjson -e 'puts((JSON.parse(File.read(ARGV[0]))["version"] rescue "unknown"))' "$RELEASE/MANIFEST.json" 2>/dev/null || echo unknown)"
     echo "openspec-kit v$ver ($RELEASE)"
     ;;
   *)
-    sed -n '2,23p' "$0"
+    sed -n '2,39p' "$0"
     exit 2
     ;;
 esac

@@ -22,7 +22,10 @@
 # validated whenever anything under openspec/ changed. Exit 0 = all executed gates passed.
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 BASE=""
 ALL=0
 REGRESSION=0
@@ -74,7 +77,7 @@ run_gate() { # <label> <dir> <command>
   if [ "$dir" = "$ROOT" ]; then
     (cd "$dir" && bash -c "$cmd")
   else
-    bash "$ROOT/bin/repo_exec.sh" "$dir" bash -c "$cmd"
+    bash "$KIT_ROOT/bin/repo_exec.sh" "$dir" bash -c "$cmd"
   fi
   rc=$?
   if [ "$rc" -eq 0 ]; then
@@ -132,7 +135,7 @@ for name in $(printf '%s\n' "${REPOS[@]+"${REPOS[@]}"}" | sort -u); do
       changed = ENV.fetch("OPENSPEC_CHANGED_FILES", "").lines.map(&:strip).reject(&:empty?)
       hit = changed.find { |f| Array(cfg["regression_when"]).any? { |p| p.is_a?(String) && matches.call(p.strip, f) } }
       if hit
-        warn "---- [info] #{File.basename(File.dirname(ARGV[0]))}: #{hit} matches regression_when: the regression runs after the gates"
+        $stderr.puts "---- [info] #{File.basename(File.dirname(ARGV[0]))}: #{hit} matches regression_when: the regression runs after the gates"
         regression.each { |k, v| gates["regression:#{k}"] = v }
       end
     end

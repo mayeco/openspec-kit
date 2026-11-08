@@ -8,9 +8,9 @@ base_branch: "{{BASE_BRANCH}}"   # the branch the merger pushes to, e.g. "main"
 kind: "{{APP_KIND}}"             # web | cli
 
 # Optional: a script of this repository, sourced from its root before each of its commands
-# (the gates below, the dev command, and `bash bin/repo_exec.sh <repo> <command>`). It
+# (the gates below, the dev command, and `openspec-kit exec <repo> <command>`). It
 # activates the toolchain the repository pins (Ruby, Node, Python, Go versions, gemsets) and
-# exports what its commands need. Start from config/templates/repo_env.sh of the umbrella.
+# exports what its commands need. Start from config/templates/repo_env.sh of the kit.
 # Agents may not change it: the merger blocks a change that does. Empty: plain shell.
 env_script: ""                  # e.g. "script/env.sh"
 
@@ -21,7 +21,7 @@ service:
   port: "{{DEV_PORT}}"                   # quoted: an unquoted {{...}} is invalid YAML
   health_endpoint: "{{HEALTH_ENDPOINT}}" # e.g. "http://localhost:3000/up"
   # The visual QA session runs the application from .worktrees/_visual_qa, a clone without
-  # untracked files: bin/visual_qa.sh begin runs this there first, on the session's slot,
+  # untracked files: openspec-kit visual-qa begin runs this there first, on the session's slot,
   # with OPENSPEC_MAIN_ROOT set to the main checkout. A failure stops the session before it
   # takes any check. e.g. "pnpm install --frozen-lockfile", or "ln -sf
   # $OPENSPEC_MAIN_ROOT/repos/core/config/application.yml config/ && bin/rails db:prepare"
@@ -47,7 +47,7 @@ gates:
   build: "{{BUILD_COMMAND}}"             # e.g. "pnpm build", "cargo build"
   secrets: "gitleaks detect --no-banner --redact --source ."   # recommended extra gate: committed secrets
 
-# The cycle's regression sweep (bash bin/run_gates.sh --all --regression) runs these once per
+# The cycle's regression sweep (openspec-kit gates --all --regression) runs these once per
 # cycle instead of the gates, after gates.setup: usually the full suite. Empty: the gates.
 regression:
   test: "{{REGRESSION_COMMAND}}"         # e.g. "bundle exec rspec", "pnpm test", "pytest"

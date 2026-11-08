@@ -28,12 +28,15 @@
 # bin/visual_qa.sh, which runs in parallel and reconciles its findings on record.
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"   # app_root, SCOPE, with_record_lock, scope_guard, record, visual_session
+ROOT="$(app_root)"
 cd "$ROOT" || exit 1
 # Schedulers (cron, systemd, launchd) start with a minimal PATH: ~/.local/bin, /usr/local/bin and language shims are missing.
-export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$PATH"
+export PATH="${OPENSPEC_PATH_PREFIX:-$HOME/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin}:$KIT_ROOT/bin:$PATH"
 export CI=1 NONINTERACTIVE=1 GIT_TERMINAL_PROMPT=0
-BASE="$(ruby "$ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.yaml
+BASE="$(ruby "$KIT_ROOT/bin/lib/settings.rb" get base_branch)"   # config/pipeline.yaml
 LOG_DIR="$ROOT/log"
 CYCLE_DIR="$LOG_DIR/cycle"            # state.json, reports/, prompts and one log per cycle (git-ignored)
 LOCK="$LOG_DIR/cycle.lock"            # directories: mkdir is atomic everywhere (macOS has no flock(1))
@@ -64,8 +67,6 @@ live_pid_in() { # <lockfile with pid=N>: prints N when that process is alive
 merger_running() { live_pid_in "$LOG_DIR/locks/merger.lock" >/dev/null; }
 # A cycle's dispatch, or a dispatcher an operator started by hand.
 dispatch_owner() { lock_owner "$DISPATCH_LOCK" || live_pid_in "$LOG_DIR/locks/dispatcher.lock"; }
-# shellcheck source=lib/record.sh
-. "$ROOT/bin/lib/record.sh"   # SCOPE, with_record_lock, scope_guard, record, visual_session
 
 # Resets .worktrees/_cycle to origin/<base> (bin/lib/record.sh). When no visual
 # session owns the main checkout, syncs it first and carries its uncommitted edits
@@ -80,13 +81,13 @@ prepare_cycle_worktree() {
     git -C "$ROOT" fetch --quiet origin "$BASE" 2>/dev/null || true
   else
     scope_guard "cycle $STAMP" || return 1
-    bash bin/sync_repos.sh
+    bash "$KIT_ROOT/bin/sync_repos.sh"
   fi
   base_ref="$(git -C "$ROOT" rev-parse --verify --quiet "origin/$BASE" || git -C "$ROOT" rev-parse HEAD)"
   prepare_session_worktree "$CYCLE_WT" "$base_ref" || return 1
   [ -z "$visual" ] || return 0
   CARRIED="$(scope_edits "$ROOT")"
-  [ -z "$CARRIED" ] || (cd "$CYCLE_WT" && ruby bin/proposals.rb carry "$ROOT")
+  [ -z "$CARRIED" ] || (cd "$CYCLE_WT" && ruby "$KIT_ROOT/bin/proposals.rb" carry "$ROOT")
 }
 
 if [ -f "$LOG_DIR/PAUSE" ]; then echo "cycle: paused ($(head -1 "$LOG_DIR/PAUSE"))"; exit 0; fi
@@ -103,7 +104,7 @@ if [ "${1:-}" = "--detach" ]; then
       [$stdin, $stdout, $stderr].each { |io| io.reopen(File::NULL, io.equal?($stdin) ? "r" : "w") }
       exec("bash", ARGV[0])
     end
-    puts pid' "$ROOT/bin/run_cycle.sh")"
+    puts pid' "$KIT_ROOT/bin/run_cycle.sh")"
   echo "cycle: started pid=$pid log=log/cycle/cycle-$STAMP.log"
   exit 0
 fi
@@ -121,43 +122,43 @@ STAMP="${CYCLE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 exec > >(tee -a "$CYCLE_DIR/cycle-$STAMP.log") 2>&1
 
 # roles.cycle in config/agents.yaml, unless AGENT_ENGINE_CYCLE or AGENT_ENGINE overrides it.
-ENGINE_CYCLE="$(ruby bin/lib/agents.rb engine cycle)"
+ENGINE_CYCLE="$(ruby "$KIT_ROOT/bin/lib/agents.rb" engine cycle)"
 
 # First cycle: start the state from its template.
-[ -f "$CYCLE_DIR/state.json" ] || cp config/templates/cycle_state.json "$CYCLE_DIR/state.json"
+[ -f "$CYCLE_DIR/state.json" ] || cp "$KIT_ROOT/config/templates/cycle_state.json" "$CYCLE_DIR/state.json"
 
 echo "== cycle $STAMP"
 DISPATCHING="$(dispatch_owner || true)"
 [ -n "$DISPATCHING" ] && echo "dispatch in progress (pid $DISPATCHING): this cycle judges and records, and does not dispatch"
-echo "== preflight"; bash bin/check_ai_engines.sh || exit 1
+echo "== preflight"; bash "$KIT_ROOT/bin/check_ai_engines.sh" || exit 1
 # Integrate what the previous cycle queued, so the judgment verifies it.
-echo "== merge";     merger_running && echo "merger running; not draining" || ruby bin/openspec_merger.rb
+echo "== merge";     merger_running && echo "merger running; not draining" || ruby "$KIT_ROOT/bin/openspec_merger.rb"
 echo "== sync"
 with_record_lock prepare_cycle_worktree || exit 1
 # What the merger integrated since the last cycle waits for the browser (bin/visual_qa.sh).
-echo "== visual queue"; ruby "$CYCLE_WT/bin/visual_qa.rb" enqueue-integrated || echo "cycle: visual queue not updated"
+echo "== visual queue"; (cd "$CYCLE_WT" && ruby "$KIT_ROOT/bin/visual_qa.rb" enqueue-integrated) || echo "cycle: visual queue not updated"
 
 echo "== plan"
 PROMPT="$CYCLE_DIR/prompt-$STAMP.md"
-ruby "$CYCLE_WT/bin/cycle_prompt.rb" "$PROMPT" --dispatch-running "$DISPATCHING" || exit 1
+(cd "$CYCLE_WT" && ruby "$KIT_ROOT/bin/cycle_prompt.rb" "$PROMPT" --dispatch-running "$DISPATCHING") || exit 1
 echo "== judgment (${ENGINE_CYCLE:-first engine on PATH})"
 # Each attempt gets the judgment's budget plus 15 minutes, not limits.agent_seconds (a
 # long BUILD's limit): a stuck judgment must not hold up the hourly cycle and its dispatch.
 budget="$(ruby -ryaml -e 'puts(((YAML.safe_load_file(ARGV[0]) rescue {}) || {}).fetch("qa_time_budget_minutes", 45).to_i)' "$CYCLE_WT/config/cycle.yaml")"
 OPENSPEC_SLOT="${OPENSPEC_SLOT:-$CYCLE_SLOT}" AGENT_TIMEOUT_SECONDS="${AGENT_TIMEOUT_SECONDS:-$(( (budget + 15) * 60 ))}" \
-  bash "$CYCLE_WT/bin/agent_exec.sh" "$CYCLE_WT" "$PROMPT" "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
+  bash "$KIT_ROOT/bin/agent_exec.sh" "$CYCLE_WT" "$PROMPT" "$ENGINE_CYCLE" || echo "cycle: agent exited non-zero"
 
 echo "== scope guard"; (cd "$CYCLE_WT" && scope_guard "cycle $STAMP") || exit 1
 # Proposals the judgment added are approved (Jev, a human or automatically, as
 # config/cycle.yaml says) and the approved ones are queued in the backlog.
-echo "== proposals"; (cd "$CYCLE_WT" && ruby bin/proposals.rb review) || echo "cycle: proposal review failed; proposals left as they were"
+echo "== proposals"; (cd "$CYCLE_WT" && ruby "$KIT_ROOT/bin/proposals.rb" review) || echo "cycle: proposal review failed; proposals left as they were"
 echo "== record"
 record_cycle() {
   if (cd "$CYCLE_WT" && record "chore(memory): scheduled cycle $STAMP"); then
     # A visual session that began meanwhile owns the main checkout: its end carries them again.
     visual_session >/dev/null || release_scope_edits "$CARRIED"
   fi
-  visual_session >/dev/null || bash bin/sync_repos.sh >/dev/null 2>&1 || true
+  visual_session >/dev/null || bash "$KIT_ROOT/bin/sync_repos.sh" >/dev/null 2>&1 || true
 }
 with_record_lock record_cycle
 
@@ -178,11 +179,11 @@ fi
 # dispatcher has finished, log/merger.stop makes it drain the queue and exit
 # between changes. A merger the operator runs as a service is left alone.
 if ! merger_running; then
-  ruby bin/openspec_merger.rb --watch &
+  ruby "$KIT_ROOT/bin/openspec_merger.rb" --watch &
   MERGER=$!
 fi
 # Workers, waiting and the merger's interval come from config/pipeline.yaml.
-ruby bin/openspec_dispatcher.rb --wait
+ruby "$KIT_ROOT/bin/openspec_dispatcher.rb" --wait
 if [ -n "$MERGER" ]; then
   echo "$MERGER" > "$LOG_DIR/merger.stop"
   wait "$MERGER"

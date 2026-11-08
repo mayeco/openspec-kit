@@ -22,7 +22,8 @@ require_relative 'settings'
 Encoding.default_external = Encoding::UTF_8
 
 module OpenSpecOrchestrator
-  ROOT = File.expand_path('../..', __dir__)
+  KIT_ROOT = OpenSpecSettings::KIT_ROOT
+  ROOT = OpenSpecSettings.app_root
   # base_branch and limits.lease_seconds of config/pipeline.yaml (bin/lib/settings.rb).
   BASE_BRANCH = OpenSpecSettings.get(ROOT, 'base_branch')
   REMOTE = ENV.fetch('OPENSPEC_REMOTE', 'origin')
@@ -46,7 +47,8 @@ module OpenSpecOrchestrator
   PAUSE_FILE = File.join(LOG_DIR, 'PAUSE')
   BACKLOG_FILE = File.join(ROOT, 'config', 'agent_backlog.json')
   HISTORY_FILE = File.join(ROOT, 'config', 'agent_history.json')
-  AGENT_EXEC = File.join(ROOT, 'bin', 'agent_exec.sh')
+  AGENT_EXEC = OpenSpecSettings.kit_file('bin/agent_exec.sh', ROOT)
+  RUN_GATES = OpenSpecSettings.kit_file('bin/run_gates.sh', ROOT)
   LEASE_TTL_SECONDS = OpenSpecSettings.get(ROOT, 'limits.lease_seconds')
   CHANGE_NAME = /\A[a-z0-9][a-z0-9-]{0,62}\z/
 
@@ -74,6 +76,8 @@ module OpenSpecOrchestrator
   end
 
   def rebuild_file(change) = File.join(REBUILD_DIR, "#{change}.json")
+
+  def kit_file(rel) = OpenSpecSettings.kit_file(rel, ROOT)
 
   RUNNING = {} # pid => true; every child runs in its own process group
 
@@ -151,7 +155,7 @@ module OpenSpecOrchestrator
   def emit(event, **fields)
     line = JSON.generate({ ts: Time.now.utc.iso8601, event: event, pid: Process.pid }.merge(fields))
     EVENT_MUTEX.synchronize { File.open(EVENTS_FILE, 'a') { |f| f.puts(line) } }
-    warn "[#{event}] #{fields.map { |k, v| "#{k}=#{v}" }.join(' ')}"
+    $stderr.puts "[#{event}] #{fields.map { |k, v| "#{k}=#{v}" }.join(' ')}"
   end
 
   def write_json_atomic(path, obj)
@@ -455,7 +459,7 @@ module OpenSpecOrchestrator
       return unavailable(name, gate_mode, change, 'jev is not installed or has no API key') unless available?
 
       cfg = gate(name)
-      file = File.join(ROOT, cfg.fetch('file'))
+      file = OpenSpecOrchestrator.kit_file(cfg.fetch('file'))
       body = JSON.generate(clip(state))
       key = Digest::SHA256.hexdigest(JSON.generate([File.read(file), body, model, cfg['assert']]))[0, 16]
       FileUtils.mkdir_p(cache_dir)
@@ -533,7 +537,7 @@ module OpenSpecOrchestrator
     # Repair feedback for an agent. Jev returns no text, so the feedback is the
     # failed condition, the measured probability and the question itself.
     def feedback(verdict)
-      questions = YAML.safe_load_file(File.join(ROOT, gate(verdict.gate).fetch('file'))).fetch('questions', {})
+      questions = YAML.safe_load_file(OpenSpecOrchestrator.kit_file(gate(verdict.gate).fetch('file'))).fetch('questions', {})
       lines = verdict.failed.map do |c|
         q = questions[c['condition'][/\A[\w-]+/]] || {}
         "- #{c['condition']} failed (measured #{c['actual']}). Question: #{q['instructions']} " \

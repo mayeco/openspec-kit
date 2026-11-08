@@ -43,9 +43,10 @@ require_relative 'kit_config'
 Encoding.default_external = Encoding::UTF_8
 
 module AppSetup
-  ROOT = File.expand_path('..', __dir__)
-  TEMPLATE = File.join(ROOT, 'config', 'templates', 'repo.yaml')
-  ENV_TEMPLATE = File.join(ROOT, 'config', 'templates', 'repo_env.sh')
+  KIT_ROOT = KitConfig::KIT_ROOT
+  ROOT = KitConfig::ROOT
+  TEMPLATE = OpenSpecSettings.kit_file('config/templates/repo.yaml', ROOT)
+  ENV_TEMPLATE = OpenSpecSettings.kit_file('config/templates/repo_env.sh', ROOT)
   ENV_SCRIPT = 'script/env.sh'
   # Files that pin a toolchain version: the repository needs an env_script.
   PINS = %w[.ruby-version .nvmrc .node-version .python-version .go-version .tool-versions .mise.toml mise.toml].freeze
@@ -269,7 +270,7 @@ module AppSetup
 
     rel_path = "repos/#{name}"
     dir = File.join(ROOT, rel_path)
-    raise Error, "#{rel_path} does not exist: ruby bin/app_setup.rb add-repo <url> --name #{name}" unless File.directory?(dir)
+    raise Error, "#{rel_path} does not exist: openspec-kit setup add-repo <url> --name #{name}" unless File.directory?(dir)
 
     unless KitConfig.child_paths.include?(rel_path)
       puts "warning: #{rel_path} is not a git submodule; the pipeline only works on the submodules under repos/"
@@ -312,7 +313,7 @@ module AppSetup
     end
     puts 'next:'
     puts "  review repos/#{name}/repo.config.yaml#{env_script ? " and #{ENV_SCRIPT}" : ''} with the person who knows the repository"
-    puts "  bash bin/repo_exec.sh #{name} true && bash bin/run_gates.sh --repo #{name}   # every gate must pass on #{branch || 'its base branch'}"
+    puts "  openspec-kit exec #{name} true && openspec-kit gates --repo #{name}   # every gate must pass on #{branch || 'its base branch'}"
     puts "  keep gates.test fast (it runs twice per change): narrow it to the related tests with OPENSPEC_CHANGED_FILES; regression.test runs the full suite once per cycle"
     files = ['repo.config.yaml', env_script].compact.join(' ')
     puts "  git -C #{rel_path} add #{files} && git -C #{rel_path} commit -m \"chore: OpenSpec kit settings\" " \
@@ -325,7 +326,7 @@ module AppSetup
     raise Error, "#{name.inspect} is not a repository name: give --name" unless name.match?(NAME)
 
     rel_path = "repos/#{name}"
-    raise Error, "#{rel_path} already exists: ruby bin/app_setup.rb repo #{name}" if File.exist?(File.join(ROOT, rel_path))
+    raise Error, "#{rel_path} already exists: openspec-kit setup repo #{name}" if File.exist?(File.join(ROOT, rel_path))
 
     local = !url.include?('://') && !url.match?(/\A[^\/]+@[^\/]+:/)
     file_ok = local ? ['-c', 'protocol.file.allow=always'] : []
@@ -347,10 +348,10 @@ module AppSetup
   end
 
   def kit_items(lock)
-    return [item('todo', 'the kit is not installed here', 'INSTALL.md: <release>/bin/install.sh init <app> --agents ...')] unless lock
+    return [item('todo', 'the kit is not installed here', 'INSTALL.md: openspec-kit init --agents ...')] unless lock
 
     drift = KitConfig.kit_drift
-    [drift ? item('todo', "kit v#{lock['version']}: files edited in place (#{drift})", 'bash bin/install.sh verify') :
+    [drift ? item('todo', "kit v#{lock['version']}: files edited in place (#{drift})", 'openspec-kit verify') :
              item('ok', "kit v#{lock['version']}, agents #{Array(lock['agents']).join(', ')}")]
   end
 
@@ -375,7 +376,7 @@ module AppSetup
 
   def repo_items
     paths = KitConfig.child_paths
-    return [item('todo', 'no child repository under repos/', 'ruby bin/app_setup.rb add-repo <url> [--name NAME]')] if paths.empty?
+    return [item('todo', 'no child repository under repos/', 'openspec-kit setup add-repo <url> [--name NAME]')] if paths.empty?
 
     paths.flat_map do |rel_path|
       name = File.basename(rel_path)
@@ -383,7 +384,7 @@ module AppSetup
       problems = KitConfig.repo_problems(rel_path)
       items = problems[:errors].map { |e| item('todo', "#{rel_path}: #{e}", "fix #{rel_path}/repo.config.yaml") }
       items += problems[:warnings].map do |w|
-        fix = w.start_with?('no repo.config.yaml') ? "ruby bin/app_setup.rb repo #{name}" : "edit #{rel_path}/repo.config.yaml"
+        fix = w.start_with?('no repo.config.yaml') ? "openspec-kit setup repo #{name}" : "edit #{rel_path}/repo.config.yaml"
         item('todo', "#{rel_path}: #{w}", fix)
       end
       cfg_file = File.join(dir, 'repo.config.yaml')
@@ -393,7 +394,7 @@ module AppSetup
       pins = PINS.select { |f| File.exist?(File.join(dir, f)) }
       if pins.any? && cfg['env_script'].to_s.strip.empty?
         items << item('todo', "#{rel_path}: pins #{pins.join(', ')} but has no env_script",
-                      "copy config/templates/repo_env.sh into the repository and set env_script (ruby bin/app_setup.rb repo #{name} shows how)")
+                      "copy config/templates/repo_env.sh into the repository and set env_script (openspec-kit setup repo #{name} shows how)")
       end
       own = ['repo.config.yaml', cfg['env_script'].to_s.strip].reject(&:empty?)
       dirty = git('status', '--porcelain', '--', *own, chdir: dir).to_s
@@ -421,11 +422,11 @@ module AppSetup
     current = git('symbolic-ref', '--short', 'HEAD')
     if current && current != base_branch
       items << item('todo', "base_branch in config/pipeline.yaml is #{base_branch}, but this checkout is on #{current}",
-                    "ruby bin/kit_config.rb set pipeline.base_branch #{current}   # or git switch #{base_branch}")
+                    "openspec-kit config set pipeline.base_branch #{current}   # or git switch #{base_branch}")
     end
-    return items << item('todo', "settings: #{errors} error(s)", 'ruby bin/kit_config.rb check') if errors.positive?
+    return items << item('todo', "settings: #{errors} error(s)", 'openspec-kit config check') if errors.positive?
 
-    items + [item('ok', 'settings valid'), *warnings.map { |w| item('warn', w, 'ruby bin/kit_config.rb check') }]
+    items + [item('ok', 'settings valid'), *warnings.map { |w| item('warn', w, 'openspec-kit config check') }]
   end
 
   def git_items
@@ -452,7 +453,7 @@ module AppSetup
 
   def schedule
     {
-      'crontab' => "0 * * * * cd #{ROOT} && mkdir -p log/cycle && /bin/bash bin/run_cycle.sh --detach >> log/cycle/cron.log 2>&1",
+      'crontab' => "0 * * * * cd #{ROOT} && mkdir -p log/cycle && openspec-kit cycle --detach >> log/cycle/cron.log 2>&1",
       'cycle_prompt' => '.agents/skills/openspec-kit-cycle/references/routine-prompt.md',
       'visual_prompt' => '.agents/skills/openspec-kit-visual-qa/references/routine-prompt.md'
     }
@@ -460,11 +461,11 @@ module AppSetup
 
   def schedule_items(cycle)
     crontab, = sh('crontab', '-l')
-    cron = crontab.lines.any? { |l| l.include?(ROOT) && l.include?('run_cycle.sh') }
+    cron = crontab.lines.any? { |l| l.include?(ROOT) && (l.include?('run_cycle.sh') || l.include?('openspec-kit cycle')) }
     ran = !Dir.glob(File.join(ROOT, 'log', 'cycle', 'cycle-*.log')).empty?
     logs = Dir.glob(File.join(ROOT, 'log', 'cycle', 'cycle-*.log')).max
     items = [if logs && File.read(logs).include?('preflight: OK') then item('ok', 'the last cycle passed its preflight')
-             else item('todo', 'run the preflight', 'bash bin/check_ai_engines.sh   # must end with preflight: OK')
+             else item('todo', 'run the preflight', 'openspec-kit preflight   # must end with preflight: OK')
              end]
     items << if cron then item('ok', 'the cycle is in the crontab')
              elsif ran then item('ok', 'a cycle has run (scheduled from an agent app, or by hand)')
@@ -500,7 +501,7 @@ module AppSetup
       end
     end
     first = report['sections'].values.flatten.find { |i| i['state'] == 'todo' }
-    lines << "next: #{first ? "#{first['what']} -> #{first['fix']}" : 'nothing left; watch it with ruby bin/cycle_progress.rb'}"
+    lines << "next: #{first ? "#{first['what']} -> #{first['fix']}" : 'nothing left; watch it with openspec-kit progress'}"
     lines << "crontab line for this application: #{report['schedule']['crontab']}"
     lines.join("\n")
   end
@@ -525,11 +526,11 @@ if __FILE__ == $PROGRAM_NAME
     in ['add-repo', url] then AppSetup.add_repo(url, name: options[:name], branch: options[:branch])
     in ['repo', name] then AppSetup.repo(name, force: options[:force])
     else
-      warn 'Usage: ruby bin/app_setup.rb status | add-repo <url> [--name NAME] [--branch BRANCH] | repo <name> [--force]'
+      $stderr.puts 'Usage: ruby bin/app_setup.rb status | add-repo <url> [--name NAME] [--branch BRANCH] | repo <name> [--force]'
       exit 2
     end
   rescue AppSetup::Error, KitConfig::Error, Psych::Exception => e
-    warn "app_setup: #{e.message}"
+    $stderr.puts "app_setup: #{e.message}"
     exit 1
   end
 end

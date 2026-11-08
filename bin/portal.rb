@@ -120,7 +120,7 @@ module OpenSpecPortal
 
     get '/api/status' do
       since = CycleProgress.parse_since(param(:since) || '24h')
-      snap = OpenSpecPortal.sh('bash', File.join(ROOT, 'bin', 'cycle_status.sh'), timeout: 30)
+      snap = OpenSpecPortal.sh('bash', OpenSpecOrchestrator.kit_file('bin/cycle_status.sh'), timeout: 30)
       json_response(
         'root' => ROOT,
         'app_name' => File.basename(ROOT),
@@ -243,7 +243,8 @@ module OpenSpecPortal
     post '/api/actions/resume' do
       OpenSpecPortal.resume!
       if %w[1 true yes].include?(param(:drain_merge).to_s.downcase)
-        job = OpenSpecPortal.start_job('merge-and-sync', 'bash', '-c', 'ruby bin/openspec_merger.rb && bash bin/sync_repos.sh')
+        job = OpenSpecPortal.start_job('merge-and-sync', 'bash', '-c',
+                                       "ruby #{OpenSpecOrchestrator.kit_file('bin/openspec_merger.rb').shellescape} && bash #{OpenSpecOrchestrator.kit_file('bin/sync_repos.sh').shellescape}")
         json_response('paused' => false, 'drained' => true, 'job' => job)
       else
         json_response('paused' => false)
@@ -252,12 +253,13 @@ module OpenSpecPortal
 
     post '/api/actions/resume_and_merge' do
       OpenSpecPortal.resume!
-      job = OpenSpecPortal.start_job('merge-and-sync', 'bash', '-c', 'ruby bin/openspec_merger.rb && bash bin/sync_repos.sh')
+      job = OpenSpecPortal.start_job('merge-and-sync', 'bash', '-c',
+                                     "ruby #{OpenSpecOrchestrator.kit_file('bin/openspec_merger.rb').shellescape} && bash #{OpenSpecOrchestrator.kit_file('bin/sync_repos.sh').shellescape}")
       json_response('ok' => true, 'paused' => false, 'job' => job)
     end
 
     post '/api/actions/cycle' do
-      res = OpenSpecPortal.sh('bash', File.join(ROOT, 'bin', 'run_cycle.sh'), '--detach', timeout: 30)
+      res = OpenSpecPortal.sh('bash', OpenSpecOrchestrator.kit_file('bin/run_cycle.sh'), '--detach', timeout: 30)
       json_response('ok' => res.ok?, 'output' => res.out.strip)
     end
 
@@ -265,25 +267,25 @@ module OpenSpecPortal
       if %w[1 true yes].include?(param(:dry_run).to_s.downcase)
         json_response(OpenSpecPortal.dry_run_queue)
       else
-        job = OpenSpecPortal.start_job('dispatch', 'ruby', File.join(ROOT, 'bin', 'openspec_dispatcher.rb'))
+        job = OpenSpecPortal.start_job('dispatch', 'ruby', OpenSpecOrchestrator.kit_file('bin/openspec_dispatcher.rb'))
         json_response('ok' => true, 'job' => job)
       end
     end
 
     post '/api/actions/merge' do
-      job = OpenSpecPortal.start_job('merge', 'ruby', File.join(ROOT, 'bin', 'openspec_merger.rb'))
+      job = OpenSpecPortal.start_job('merge', 'ruby', OpenSpecOrchestrator.kit_file('bin/openspec_merger.rb'))
       json_response('ok' => true, 'job' => job)
     end
 
     post '/api/actions/sync' do
-      args = ['bash', File.join(ROOT, 'bin', 'sync_repos.sh')]
+      args = ['bash', OpenSpecOrchestrator.kit_file('bin/sync_repos.sh')]
       args << '--publish' if %w[1 true yes].include?(param(:publish).to_s.downcase)
       res = OpenSpecPortal.sh(*args, timeout: 120)
       json_response('ok' => res.ok?, 'output' => res.out)
     end
 
     post '/api/actions/gates' do
-      args = ['bash', File.join(ROOT, 'bin', 'run_gates.sh')]
+      args = ['bash', OpenSpecOrchestrator.kit_file('bin/run_gates.sh')]
       repo = param(:repo).to_s.strip
       if !repo.empty? && repo.match?(/\A[A-Za-z0-9._-]+\z/)
         args.push('--repo', repo)
@@ -299,7 +301,7 @@ module OpenSpecPortal
       op = param(:op).to_s.strip
       case op
       when 'begin', 'end'
-        res = OpenSpecPortal.sh('bash', File.join(ROOT, 'bin', 'visual_qa.sh'), op, timeout: 120)
+        res = OpenSpecPortal.sh('bash', OpenSpecOrchestrator.kit_file('bin/visual_qa.sh'), op, timeout: 120)
         json_response('ok' => res.ok?, 'output' => res.out.strip)
       when 'request'
         what = param(:what).to_s.strip

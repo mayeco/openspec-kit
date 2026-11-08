@@ -48,7 +48,8 @@ require_relative 'cycle_prompt'
 Encoding.default_external = Encoding::UTF_8
 
 module KitConfig
-  ROOT = File.expand_path('..', __dir__)
+  KIT_ROOT = OpenSpecSettings::KIT_ROOT
+  ROOT = OpenSpecSettings.app_root
   FILES = {
     'agents' => 'config/agents.yaml',
     'pipeline' => 'config/pipeline.yaml',
@@ -518,7 +519,7 @@ module KitConfig
       next if outside.empty?
 
       report[:warnings] << "roles.#{role}: #{outside.join(', ')} not among the agents, so without skills here: " \
-                           '<release>/bin/install.sh upgrade <app> --agents ... adds it'
+                           'openspec-kit update --agents ... adds it'
     end
   end
 
@@ -591,7 +592,7 @@ module KitConfig
 
       mode = cfg['mode'] || 'off'
       file = cfg['file'].to_s
-      next if mode == 'off' || (!file.empty? && File.file?(File.join(ROOT, file)))
+      next if mode == 'off' || (!file.empty? && File.file?(OpenSpecSettings.kit_file(file, ROOT)))
 
       report[:errors] << "gates.#{name}.file: #{file.empty? ? 'missing' : "#{file} does not exist"}"
     end
@@ -662,7 +663,7 @@ module KitConfig
       unless edits.is_a?(Array) && edits.any? && edits.all? { |e| e.is_a?(Hash) && e['old'].is_a?(String) && !e['old'].empty? && e['new'].is_a?(String) }
         report[:errors] << "#{at}: edits must be a list of {old, new} texts"
       end
-      report[:warnings] << "#{at}: a prompt edit waits for a human: ruby bin/proposals.rb show #{at}" if item['status'] == 'proposed'
+      report[:warnings] << "#{at}: a prompt edit waits for a human: openspec-kit proposals show #{at}" if item['status'] == 'proposed'
     end
   end
 
@@ -677,7 +678,7 @@ module KitConfig
     cfg_file = File.join(dir, 'repo.config.yaml')
     unless File.exist?(cfg_file)
       report[:warnings] << 'no repo.config.yaml: no gates run, base branch from .gitmodules or main ' \
-                           "(ruby bin/app_setup.rb repo #{File.basename(rel)} writes one)"
+                           "(openspec-kit setup repo #{File.basename(rel)} writes one)"
       return report
     end
     begin
@@ -718,7 +719,7 @@ module KitConfig
   end
 
   def kit_drift
-    out, status = Open3.capture2e('ruby', File.join(ROOT, 'bin', 'openspec_kit.rb'), 'verify', ROOT)
+    out, status = Open3.capture2e('ruby', OpenSpecSettings.kit_file('bin/openspec_kit.rb', ROOT), 'verify', ROOT)
     status.success? ? nil : out.strip.lines.first.to_s.strip
   end
 
@@ -762,7 +763,7 @@ module KitConfig
   def application_problems
     report = { errors: [], warnings: [] }
     drift = kit_drift
-    report[:errors] << "kit files edited in place (#{drift}): bash bin/install.sh verify" if drift
+    report[:errors] << "kit files edited in place (#{drift}): openspec-kit verify" if drift
     pending = Dir.glob(File.join(ROOT, '{*.md,config/*,config/prompts/*}.new')).map { |f| f.delete_prefix("#{ROOT}/") }
     report[:warnings] << "an upgrade left #{pending.join(', ')}: merge what you need into the file, then delete it" if pending.any?
     outside = git('status', '--porcelain', '--ignore-submodules=all', '--', '.', *SCOPE.map { |p| ":!#{p}" })
@@ -774,7 +775,7 @@ module KitConfig
     base = OpenSpecSettings.get(ROOT, 'base_branch')
     if git('remote').to_s.split.include?('origin') && git('rev-parse', '--verify', '--quiet', "origin/#{base}").nil?
       current = git('symbolic-ref', '--short', 'HEAD')
-      report[:warnings] << "origin has no branch #{base} (pipeline.base_branch): push it, or ruby bin/kit_config.rb set " \
+      report[:warnings] << "origin has no branch #{base} (pipeline.base_branch): push it, or openspec-kit config set " \
                            "pipeline.base_branch #{current || '<branch>'}"
     end
     OpenSpecSettings::KEYS.each do |key, (var, _)|
@@ -821,7 +822,7 @@ module KitConfig
     stray = setting['type'] == :agents ? value - Array(data['agents']).map(&:to_s) : []
     if stray.any?
       raise Error, "#{stray.join(', ')} not among the agents of config/agents.yaml (#{Array(data['agents']).join(', ')}); " \
-                   'add it first with <release>/bin/install.sh upgrade <app> --agents ..., which installs its skills'
+                   'add it first with openspec-kit update --agents ..., which installs its skills'
     end
     value
   rescue ArgumentError, KeyError
@@ -867,7 +868,7 @@ module KitConfig
 
   def set(key, text, dry_run: false)
     setting = find(key)
-    raise Error, "#{key} is not a setting; ruby bin/kit_config.rb show lists them" unless setting
+    raise Error, "#{key} is not a setting; openspec-kit config show lists them" unless setting
     raise Error, "#{key} is a list: #{setting['change']}" if setting['type'] == :list
 
     file = keys_of(key).first
@@ -936,11 +937,11 @@ if __FILE__ == $PROGRAM_NAME
     in ['set', key, value]
       KitConfig.set(key, value, dry_run: dry_run)
     else
-      warn usage
+      $stderr.puts usage
       exit 2
     end
   rescue KitConfig::Error, Psych::Exception => e
-    warn "kit_config: #{e.message}"
+    $stderr.puts "kit_config: #{e.message}"
     exit 1
   end
 end

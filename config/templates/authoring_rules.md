@@ -6,8 +6,8 @@ Workspace:
 - Application code lives in the child repositories under `repos/`; specifications live only in `openspec/`.
 - Agents never commit, push, rebase, reset or switch branches. The dispatcher commits your output on `feat/spec-<change>` branches, and only the merger publishes base branches.
 - Canonical specs (`openspec/specs/`) change only through `openspec archive`, which the merger runs. Never edit them.
-- Every behavior change is proven by automated tests. `bash bin/run_gates.sh` runs the gates each touched repository declares in its `repo.config.yaml`.
-- Run any other command of a repository (one test file, a linter, a console, the application) through `bash bin/repo_exec.sh repos/<name> <command>`: it prepares the toolchain that repository pins. Never edit a repository's `repo.config.yaml` or its `env_script`.
+- Every behavior change is proven by automated tests. `openspec-kit gates` runs the gates each touched repository declares in its `repo.config.yaml`.
+- Run any other command of a repository (one test file, a linter, a console, the application) through `openspec-kit exec repos/<name> <command>`: it prepares the toolchain that repository pins. Never edit a repository's `repo.config.yaml` or its `env_script`.
 - All code, comments, documentation, specs and commit messages are professional English.
 
 Proposal:
@@ -34,6 +34,6 @@ Tasks:
 - Pair every code task with its automated test task.
 
 Implementation:
-- Run `bash bin/run_gates.sh` before marking the last task complete.
+- Run `openspec-kit gates` before marking the last task complete.
 - If an unexpected data migration or schema change emerges, write the question to `.needs-human` in the change directory and stop.
 - Record non-obvious lessons in `handoff.md` in the change directory.

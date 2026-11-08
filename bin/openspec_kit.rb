@@ -9,17 +9,17 @@
 # every file with its sha256 and its class. An installed umbrella keeps the
 # same data in .openspec-kit.lock.
 #
-#   ruby bin/openspec_kit.rb init <app-dir> --source <release-dir> --agents LIST [--plan A[,B] --build A[,B] --cycle A[,B]]
-#   ruby bin/openspec_kit.rb upgrade <app-dir> --source <release-dir> [--agents LIST ...] [--force]
+#   ruby bin/openspec_kit.rb init [<app-dir>] --source <release-dir> --agents LIST [--plan A[,B] --build A[,B] --cycle A[,B]]
+#   ruby bin/openspec_kit.rb upgrade [<app-dir>] --source <release-dir> [--agents LIST ...] [--force]
 #   ruby bin/openspec_kit.rb verify [<app-dir>]
 #
-# Kit files are replaced on upgrade and are never edited in the application.
-# Skills ship once, in skills/<name>/, and are installed, as kit files, into
-# .agents/skills/ and the skills directory of each other selected agent. The
-# selection and the agent of each role are kept in config/agents.yaml, which
-# the scripts read. Seed files are created once and then belong to the
-# application: a changed template arrives next to them as <file>.new.
-# bin/install.sh is the entry point; it ships with the rest of bin/.
+# The kit's scripts (bin/) and templates (config/templates/) stay in the
+# release checkout (~/.openspec-kit) and run through openspec-kit. Skills ship
+# once, in skills/<name>/, and are installed, as kit files, into .agents/skills/
+# and the skills directory of each other selected agent. The selection and the
+# agent of each role are kept in config/agents.yaml, which the scripts read.
+# Seed files are created once and then belong to the application: a changed
+# template arrives next to them as <file>.new.
 # ==============================================================================
 
 require 'digest'
@@ -113,7 +113,7 @@ module OpenSpecKit
 
   # Removes the directories that removing these files left empty, up to the target.
   def prune_empty_dirs(target, paths)
-    paths.map { |rel| File.dirname(rel) }.uniq.each do |dir|
+    paths.map { |rel| File.dirname(rel) }.uniq.sort_by { |d| -d.length }.each do |dir|
       until dir == '.'
         path = File.join(target, dir)
         break unless Dir.exist?(path) && Dir.empty?(path)
@@ -124,11 +124,12 @@ module OpenSpecKit
     end
   end
 
-  # { path in the application => path in the release }: the kit files, and every
-  # shipped skill in .agents/skills/, the shared skills directory, and in the skills
-  # directory of each other selected agent.
+  # { path in the application => path in the release }: every shipped skill in
+  # .agents/skills/, the shared skills directory, and in the skills directory of
+  # each other selected agent. The scripts (bin/) and templates (config/templates/)
+  # stay in the release checkout (~/.openspec-kit) and run through openspec-kit.
   def kit_plan(manifest, agents)
-    plan = files(manifest, 'kit').keys.to_h { |rel| [rel, rel] }
+    plan = {}
     files(manifest, 'skill').each_key do |rel|
       OpenSpecAgents.skills_dirs(agents).each { |dir| plan[File.join(dir, rel.delete_prefix('skills/'))] = rel }
     end
@@ -243,7 +244,7 @@ module OpenSpecKit
     puts "kit: installed v#{manifest['version']} into #{target} " \
          "(#{plan.size} kit files, #{seeded.size} seeds created)"
     puts "agents: #{describe(agents, roles)}, in #{OpenSpecAgents::CONFIG}"
-    puts 'next: ask your agent to set the application up (the openspec-kit-init skill; ruby bin/app_setup.rb status ' \
+    puts 'next: ask your agent to set the application up (the openspec-kit-init skill; openspec-kit setup status ' \
          'lists what is left): fill README.md and ROADMAP.md, describe the project in openspec/config.yaml, add child ' \
          'repos under repos/, commit, then schedule the cycle (crontab) and the visual QA session (an agent app with ' \
          'a browser) as SCHEDULING.md describes; INSTALL.md has the rest'
@@ -257,8 +258,10 @@ module OpenSpecKit
     agents, roles = selection(target, agents, roles)
     previous = installed_agents(old)
     reselected = agents != previous || roles != current&.fetch('roles')
-    edited = drift(target, old)
-    if old['version'] == manifest['version'] && edited.empty? && !reselected
+    kit = kit_plan(manifest, agents)
+    dropped = files(old, 'kit').keys - kit.keys
+    edited = drift(target, old).reject { |rel, state| dropped.include?(rel) && state == 'missing' }
+    if old['version'] == manifest['version'] && edited.empty? && !reselected && dropped.empty?
       puts "kit: already at v#{manifest['version']}; nothing to do"
       return
     end
@@ -268,16 +271,14 @@ module OpenSpecKit
     end
 
     same_version = old['version'] == manifest['version']
-    branch = same_version ? "kit-agents-#{agents.join('-')}" : "kit-upgrade-v#{manifest['version']}"
+    branch = same_version && reselected ? "kit-agents-#{agents.join('-')}" : "kit-upgrade-v#{manifest['version']}"
     if (git = git_repo?(target))
       raise Error, "#{target} has uncommitted changes; commit or stash them first" unless git(target, 'status', '--porcelain').empty?
 
       git(target, 'switch', '--quiet', '-c', branch)
     end
 
-    kit = kit_plan(manifest, agents)
     kit.each { |dest, from| copy(source, target, from, to: dest) }
-    dropped = files(old, 'kit').keys - kit.keys
     dropped.each { |rel| FileUtils.rm_f(File.join(target, rel)) }
     # Seeds this release no longer ships: an untouched one is still the old template, so it
     # goes; one the application edited is its data, so it stays and is reported.
@@ -360,7 +361,7 @@ module OpenSpecKit
     edited = drift(target, lock)
     selected = OpenSpecAgents.load(target)&.fetch('agents')
     if lock['agents'] && selected && selected != lock['agents']
-      edited['config/agents.yaml'] = "lists #{selected.join(', ')}, skills installed for #{lock['agents'].join(', ')}: run bin/install.sh upgrade from the release"
+      edited['config/agents.yaml'] = "lists #{selected.join(', ')}, skills installed for #{lock['agents'].join(', ')}: run openspec-kit upgrade --agents ..."
     end
     mismatches = toolchain_mismatches(target, lock['toolchain'])
     strict = ENV['OPENSPEC_STRICT_TOOLCHAIN'] == '1'
@@ -377,7 +378,7 @@ end
 if __FILE__ == $PROGRAM_NAME
   options = { source: nil, agents: nil, roles: {}, force: false }
   parser = OptionParser.new do |opts|
-    opts.banner = 'Usage: ruby bin/openspec_kit.rb init|upgrade|verify <app-dir> [options]'
+    opts.banner = 'Usage: ruby bin/openspec_kit.rb init|upgrade|verify [<app-dir>] [options]'
     opts.on('--source DIR', 'Release of the deliverable (holds MANIFEST.json)') { |v| options[:source] = File.expand_path(v) }
     opts.on('--agents LIST', "Agents the application uses: #{OpenSpecAgents::SUPPORTED.keys.join(', ')}") { |v| options[:agents] = v }
     OpenSpecAgents::ROLES.each do |role, does|
@@ -386,31 +387,31 @@ if __FILE__ == $PROGRAM_NAME
     opts.on('--order ORDER', "init: how each call picks among a role's agents: #{OpenSpecAgents::ORDERS.join(' or ')} (default #{OpenSpecAgents::DEFAULT_ORDER})") { |v| options[:order] = v }
     opts.on('--force', 'init: replace existing kit files; upgrade: discard edits to kit files') { options[:force] = true }
   end
-  args = parser.parse(ARGV)
-  command = args.shift
-  app = args.shift || (File.expand_path('..', __dir__) if command == 'verify')
-  target = app && File.expand_path(app)
   begin
+    args = parser.parse(ARGV)
+    command = args.shift
+    app = args.shift || '.'
+    target = File.expand_path(app)
     case command
     when 'init', 'upgrade'
-      raise OpenSpecKit::Error, "#{command} needs <app-dir> and --source" if args.any? || options[:source].nil? || target.nil?
+      raise OpenSpecKit::Error, "#{command} needs [<app-dir>] and --source" if args.any? || options[:source].nil?
 
       selection = { agents: options[:agents], roles: options[:roles], force: options[:force] }
       if command == 'init'
         OpenSpecKit.init(options[:source], target, **selection, order: options[:order])
       else
-        raise OpenSpecKit::Error, 'upgrade takes no --order: ruby bin/kit_config.rb set agents.order <order> in the application' if options[:order]
+        raise OpenSpecKit::Error, 'upgrade takes no --order: openspec-kit config set agents.order <order> in the application' if options[:order]
 
         OpenSpecKit.upgrade(options[:source], target, **selection)
       end
     when 'verify'
       exit(OpenSpecKit.verify(target) ? 0 : 1)
     else
-      warn parser.banner
+      $stderr.puts parser.banner
       exit 2
     end
-  rescue OpenSpecKit::Error, OpenSpecAgents::Error => e
-    warn "kit: #{e.message}"
+  rescue OpenSpecKit::Error, OpenSpecAgents::Error, OptionParser::ParseError => e
+    $stderr.puts "kit: #{e.message}"
     exit 1
   end
 end

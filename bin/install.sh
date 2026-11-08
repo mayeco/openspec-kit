@@ -4,21 +4,21 @@
 # ==============================================================================
 # From a checkout of the release tag you want (it holds MANIFEST.json), or
 # through `~/.local/bin/openspec-kit`:
-#   bin/install.sh init <app-dir> --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]] [--order fallback|random]
-#   bin/install.sh upgrade|update <app-dir> [--agents LIST --plan A[,B] ...] [--force]
+#   bin/install.sh init [<app-dir>] --agents hermes,opencode [--plan A[,B] --build A[,B] --cycle A[,B]] [--order fallback|random]
+#   bin/install.sh upgrade|update [<app-dir>] [--agents LIST --plan A[,B] ...] [--force]
 #   bin/install.sh self-upgrade [<tag-or-branch>]
-#   bin/install.sh verify <app-dir>
-# Inside an application, where it arrives with the rest of bin/, only
-# `bash bin/install.sh verify` applies: kit files match .openspec-kit.lock.
+#   bin/install.sh verify [<app-dir>]
 #
-# Agents: claude, codex, copilot, hermes, opencode, agy, kilo, cline, pi, omp, crush, cursor-agent, zcode. init installs the kit (bin/,
-# config/templates/) and its skills in .agents/skills/, the directory agents
-# share, plus a copy for each other selected agent. It records the agents and, per role
-# (plan, build, cycle), the agent that runs it or several in order of preference
-# (--build claude,hermes: hermes runs when claude fails), in config/agents.yaml. With
-# more than one agent, a role not given as an option is asked. init also creates the files the application owns from
-# then on (README.md, ROADMAP.md, MEMORY.md, config/*.yaml, config/*.json),
-# runs `openspec init` for the selected agents and writes .openspec-kit.lock.
+# Agents: claude, codex, copilot, hermes, opencode, agy, kilo, cline, pi, omp, crush, cursor-agent, zcode. init installs the kit's
+# skills in .agents/skills/, the directory agents share, plus a copy for each other
+# selected agent. It records the agents and, per role (plan, build, cycle), the agent
+# that runs it or several in order of preference (--build claude,hermes: hermes runs
+# when claude fails), in config/agents.yaml. With more than one agent, a role not given
+# as an option is asked. init also creates the files the application owns from then on
+# (README.md, ROADMAP.md, MEMORY.md, config/*.yaml, config/*.json), runs `openspec init`
+# for the selected agents and writes .openspec-kit.lock. The kit's scripts (bin/) and
+# templates (config/templates/) stay in the release checkout (~/.openspec-kit) and run
+# through `openspec-kit`.
 # Fill the {{...}} placeholders, add repos/, commit, then schedule the cycle and
 # the visual QA session with the routine prompts that init names.
 # upgrade moves the application to this release on a branch kit-upgrade-v<version>,

@@ -18,6 +18,7 @@
 # ==============================================================================
 
 require 'digest'
+require_relative 'settings'
 
 module OpenSpecPrompts
   DIR = 'config/prompts'
@@ -72,7 +73,7 @@ module OpenSpecPrompts
   # new version) and the kit's authoring rules when it carries them.
   def version(root, name)
     parts = [File.read(path(root, name), encoding: 'UTF-8').gsub(COMMENT, '')]
-    rules = File.join(root, RULES)
+    rules = OpenSpecSettings.kit_file(RULES, root)
     parts << File.read(rules, encoding: 'UTF-8') if placeholders(root, name).include?('authoring_rules') && File.file?(rules)
     Digest::SHA256.hexdigest(parts.join("\0"))[0, 12]
   end
@@ -97,7 +98,7 @@ module OpenSpecPrompts
 end
 
 if __FILE__ == $PROGRAM_NAME
-  root = File.expand_path('../..', __dir__)
+  root = OpenSpecSettings.app_root
   case ARGV
   in ['check']
     report = OpenSpecPrompts.problems(root)
@@ -111,11 +112,11 @@ if __FILE__ == $PROGRAM_NAME
     begin
       print OpenSpecPrompts.render(root, name, pairs.to_h { |pair| pair.split('=', 2) })
     rescue OpenSpecPrompts::Error => e
-      warn "prompts: #{e.message}"
+      $stderr.puts "prompts: #{e.message}"
       exit 1
     end
   else
-    warn 'Usage: ruby bin/lib/prompts.rb check | render <plan|build|cycle> [name=value ...] | version <plan|build|cycle>'
+    $stderr.puts 'Usage: ruby bin/lib/prompts.rb check | render <plan|build|cycle> [name=value ...] | version <plan|build|cycle>'
     exit 2
   end
 end

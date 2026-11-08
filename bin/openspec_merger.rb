@@ -59,7 +59,7 @@ class OpenSpecMerger
   def acquire_singleton!
     @singleton = File.open(File.join(O::LOCK_DIR, 'merger.lock'), File::RDWR | File::CREAT, 0o644)
     unless @singleton.flock(File::LOCK_EX | File::LOCK_NB)
-      warn '[merger] another merger holds log/locks/merger.lock; exiting'
+      $stderr.puts '[merger] another merger holds log/locks/merger.lock; exiting'
       exit 0
     end
     @singleton.truncate(0)
@@ -214,9 +214,9 @@ class OpenSpecMerger
 
     # 5. Gates on exactly what will be pushed, using the base branch's gate script.
     update_state('RUNNING_GATES')
-    gates = O.run(['bash', 'bin/run_gates.sh', '--base', fork_point], chdir: wt, timeout: GATE_TIMEOUT,
-                                                                     env: { 'OPENSPEC_SLOT' => O::MERGER_SLOT.to_s },
-                                                                     log: File.join(O::WORKER_LOG_DIR, "#{change}.merge.log"))
+    gates = O.run(['bash', O::RUN_GATES, '--base', fork_point], chdir: wt, timeout: GATE_TIMEOUT,
+                                                                env: { 'OPENSPEC_SLOT' => O::MERGER_SLOT.to_s },
+                                                                log: File.join(O::WORKER_LOG_DIR, "#{change}.merge.log"))
     raise O::Blocked.new('gate_failure', gates.tail(120)) unless gates.ok?
 
     # 6. Deterministic spec sync: `openspec archive` applies ADDED/MODIFIED/

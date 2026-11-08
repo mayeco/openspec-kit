@@ -3,7 +3,10 @@
 # bin/cycle_status.sh - Read-only snapshot of guards, queues and repositories
 # ==============================================================================
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 LOG="$ROOT/log"
 NOW="$(date +%s)"
 mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "$NOW"; }
@@ -19,13 +22,13 @@ for lock in cycle dispatch visual_qa; do # the judgment of a cycle; a cycle's di
   fi
 done
 
-AGENTS="$(ruby "$ROOT/bin/lib/agents.rb" list 2>/dev/null)"
+AGENTS="$(ruby "$KIT_ROOT/bin/lib/agents.rb" list 2>/dev/null)"
 ROLES="$(for role in plan build cycle; do
-  engine="$(ruby "$ROOT/bin/lib/agents.rb" engine "$role" 2>/dev/null)"; printf '%s: %s, ' "$role" "$(printf '%s' "${engine:-first on PATH}" | tr ',' '>')"
+  engine="$(ruby "$KIT_ROOT/bin/lib/agents.rb" engine "$role" 2>/dev/null)"; printf '%s: %s, ' "$role" "$(printf '%s' "${engine:-first on PATH}" | tr ',' '>')"
 done)"
-echo "AGENTS: ${AGENTS:-none selected (no config/agents.yaml)} (${ROLES%, }; order: $(ruby "$ROOT/bin/lib/agents.rb" order 2>/dev/null); permissions: $(ruby "$ROOT/bin/lib/agents.rb" permissions 2>/dev/null))"
+echo "AGENTS: ${AGENTS:-none selected (no config/agents.yaml)} (${ROLES%, }; order: $(ruby "$KIT_ROOT/bin/lib/agents.rb" order 2>/dev/null); permissions: $(ruby "$KIT_ROOT/bin/lib/agents.rb" permissions 2>/dev/null))"
 # The agents running a call right now (log/agents_in_use/), with how many calls each.
-IN_USE="$(ruby "$ROOT/bin/lib/agents.rb" in-use 2>/dev/null)"
+IN_USE="$(ruby "$KIT_ROOT/bin/lib/agents.rb" in-use 2>/dev/null)"
 [ -n "$IN_USE" ] && echo "AGENTS IN USE: $IN_USE"
 
 if [ -f "$LOG/cycle/state.json" ]; then
@@ -44,7 +47,7 @@ done
 
 echo "== Queues"
 echo "ready_to_merge: $(find "$LOG/ready_to_merge" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
-ruby "$ROOT/bin/visual_qa.rb" status 2>/dev/null
+ruby "$KIT_ROOT/bin/visual_qa.rb" status 2>/dev/null
 if [ -f "$ROOT/config/agent_proposals.json" ]; then
   ruby -rjson -e 'p = JSON.parse(File.read(ARGV[0], encoding: "UTF-8")) rescue (puts "proposals: unreadable"; exit)
     waiting = Array(p).select { |i| i["status"] == "proposed" }.map { |i| i["change_name"] }
@@ -54,7 +57,7 @@ fi
 # when the next one comes, that it used them all, or that its reason needs a person.
 for f in "$LOG"/blocked/*.json; do
   [ -f "$f" ] || continue
-  ruby -r "$ROOT/bin/lib/openspec_orchestrator" -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8"))
+  ruby -r "$KIT_ROOT/bin/lib/openspec_orchestrator" -e 'b = JSON.parse(File.read(ARGV[0], encoding: "UTF-8"))
     note = OpenSpecOrchestrator.retry_note(ARGV[0], b)
     puts "BLOCKED: #{b["change_name"]} reason=#{b["reason"]} since=#{b["blocked_at"]}#{note ? " (#{note})" : ""}"' "$f"
 done

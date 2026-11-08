@@ -13,7 +13,10 @@
 # commit. Refused while the dispatcher or merger is running, because they are
 # the only writers of base branches in autonomous mode.
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+ROOT="$(app_root)"
 PUBLISH=0
 [ "${1:-}" = "--publish" ] && PUBLISH=1
 export GIT_TERMINAL_PROMPT=0 GIT_MERGE_AUTOEDIT=no

@@ -17,12 +17,16 @@
 #     the policy. A right answer below the routing confidence is a WARN: the
 #     rule would not fire, so tune the threshold or the question.
 set -uo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT" || exit 1
+KIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/record.sh
+. "$KIT_ROOT/bin/lib/record.sh"
+APP_ROOT="$(app_root)"
+cd "$KIT_ROOT" || exit 1
 LIVE=0; [ "${1:-}" = "--live" ] && LIVE=1
 FIX=config/templates/jev/fixtures
-# An application's policy; the kit's own source tree keeps it as a seed.
-POLICY=config/jev_policy.yaml
+# An application's policy first; the kit's own source tree keeps it as a seed.
+POLICY="$APP_ROOT/config/jev_policy.yaml"
+[ -f "$POLICY" ] || POLICY=config/jev_policy.yaml
 [ -f "$POLICY" ] || POLICY=seeds/config/jev_policy.yaml
 FAILURES=0
 

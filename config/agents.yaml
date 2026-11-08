@@ -1,7 +1,7 @@
 # The agents this application uses, written by install.sh (init, or upgrade --agents).
 # Each one gets the skills in its own directory. The scripts read the roles from here,
 # so the scheduled task always runs the same command. Change the agents with
-# `<release>/bin/install.sh upgrade <app> --agents ...`; a role, the order and the permissions may be edited by hand.
+# `openspec-kit update --agents ...`; a role, the order and the permissions may be edited by hand.
 # The agents the kit supports (an agent not listed in agents gets no skills here):
 #   claude        Claude Code             skills in .claude/skills/
 #   codex         OpenAI Codex            skills in .agents/skills/

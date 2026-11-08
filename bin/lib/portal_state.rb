@@ -11,6 +11,7 @@
 
 module OpenSpecPortal
   O = OpenSpecOrchestrator
+  KIT_ROOT = O::KIT_ROOT
   ROOT = O::ROOT
   LOG = O::LOG_DIR
   PORTAL_DIR = File.join(LOG, 'portal')
@@ -20,7 +21,7 @@ module OpenSpecPortal
   DEFAULT_BIND = '127.0.0.1'
   CACHE = {}
   CACHE_MUTEX = Mutex.new
-  PATH_ENV = "#{ENV.fetch('OPENSPEC_PATH_PREFIX', "#{Dir.home}/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin")}:#{ENV.fetch('PATH', '')}"
+  PATH_ENV = "#{ENV.fetch('OPENSPEC_PATH_PREFIX', "#{Dir.home}/.local/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/opt/homebrew/bin")}:#{File.join(KIT_ROOT, 'bin')}:#{ENV.fetch('PATH', '')}"
 
   module_function
 
@@ -63,7 +64,7 @@ module OpenSpecPortal
   def history_items = Proposals.read(O::HISTORY_FILE)
 
   def dry_run_queue
-    res = sh('ruby', File.join(ROOT, 'bin', 'openspec_dispatcher.rb'), '--dry-run', '--json', timeout: 30)
+    res = sh('ruby', O.kit_file('bin/openspec_dispatcher.rb'), '--dry-run', '--json', timeout: 30)
     res.ok? ? (JSON.parse(res.out) rescue {}) : { 'error' => res.out.strip }
   end
 
@@ -104,7 +105,7 @@ module OpenSpecPortal
         'acquired_at' => data['acquired_at'], 'heartbeat_at' => data['heartbeat_at'] }
     end
     in_use = OpenSpecAgents.registry(ROOT) do
-      Dir.glob(File.join(ROOT, OpenSpecAgents::IN_USE, '*')).filter_map do |f|
+      Dir.glob(File.join(OpenSpecAgents.in_use_dir(ROOT), '*')).filter_map do |f|
         pid = Integer(File.basename(f), exception: false) or next
         next unless alive?(pid)
 
@@ -430,7 +431,7 @@ module OpenSpecPortal
            Proposals.read(Proposals::FILE).find { |i| i['change_name'] == name }
     wt = File.join(O::WORKTREE_BASE, "worker-#{name}")
     memory = OpenSpecMemory.prompt_block(File.directory?(wt) ? wt : ROOT, capabilities: [])
-    rules = (File.read(File.join(ROOT, OpenSpecPrompts::RULES)) rescue '')
+    rules = (File.read(O.kit_file(OpenSpecPrompts::RULES)) rescue '')
     case role
     when 'plan'
       OpenSpecPrompts.render(ROOT, 'plan', 'change' => name, 'goal' => (item && item['description']).to_s,
@@ -512,7 +513,7 @@ module OpenSpecPortal
           OpenSpecPrompts.render(ROOT, role,
                                  'change' => 'example-change', 'goal' => 'Example backlog item description',
                                  'branch' => 'feat/spec-example-change', 'memory' => OpenSpecMemory.prompt_block(ROOT, capabilities: []),
-                                 'jev_hint' => '', 'authoring_rules' => (File.read(File.join(ROOT, OpenSpecPrompts::RULES)) rescue ''),
+                                 'jev_hint' => '', 'authoring_rules' => (File.read(O.kit_file(OpenSpecPrompts::RULES)) rescue ''),
                                  'feedback' => '', 'rebuild' => '')
         end
       rescue StandardError => e

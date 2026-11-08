@@ -5,7 +5,26 @@
 # Sourced by bin/run_cycle.sh (the headless judgment, in .worktrees/_cycle) and
 # bin/visual_qa.sh (the visual QA session of an agent app, which writes its
 # findings in the main checkout and records them from .worktrees/_visual_qa).
-# The caller sets ROOT, LOG_DIR and BASE.
+# The caller sets ROOT, LOG_DIR and BASE (or uses app_root below).
+
+KIT_ROOT="${KIT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+# The application checkout or worktree that contains $PWD (walking up until
+# .openspec-kit.lock, config/pipeline.yaml, config/agents.yaml or openspec/ is
+# found), or $PWD itself.
+app_root() {
+  if [ -n "${OPENSPEC_APP_ROOT:-}" ]; then (cd "$OPENSPEC_APP_ROOT" && pwd); return; fi
+  local d="$PWD"
+  while :; do
+    if [ -f "$d/.openspec-kit.lock" ] || [ -f "$d/config/pipeline.yaml" ] || [ -f "$d/config/agents.yaml" ] || [ -d "$d/openspec" ]; then
+      printf '%s\n' "$d"; return
+    fi
+    if [ -e "$d/.git" ] && [ "$(basename "$(dirname "$d")")" != repos ]; then break; fi
+    [ "$d" = / ] || [ "$d" = . ] && break
+    d="$(dirname "$d")"
+  done
+  pwd
+}
 
 # The versioned paths an agent session may write: the memory (MEMORY.md, and
 # memory/ for lessons of one repository or capability), the backlog, its history
@@ -84,7 +103,7 @@ record() { # <commit message>
   for attempt in 1 2 3; do
     # The merger or the other session may have pushed meanwhile; reconcile on rebase.
     git push --quiet origin "HEAD:$BASE" && { pushed=0; break; }
-    ruby bin/proposals.rb rebase "$BASE" && git push --quiet origin "HEAD:$BASE" && { pushed=0; break; }
+    ruby "$KIT_ROOT/bin/proposals.rb" rebase "$BASE" && git push --quiet origin "HEAD:$BASE" && { pushed=0; break; }
     sleep $((attempt * 5))
   done
   git submodule update --init --quiet
@@ -129,7 +148,7 @@ publish_leftover_record() { # <worktree> <base-ref>
     keep_unpublished "$wt" HEAD "the record an earlier session left in $wt sits on a base origin no longer has"
     return 1
   fi
-  if (cd "$wt" && { git push --quiet origin "HEAD:$BASE" || { ruby bin/proposals.rb rebase "$BASE" && git push --quiet origin "HEAD:$BASE"; }; }); then
+  if (cd "$wt" && { git push --quiet origin "HEAD:$BASE" || { ruby "$KIT_ROOT/bin/proposals.rb" rebase "$BASE" && git push --quiet origin "HEAD:$BASE"; }; }); then
     echo "published the record an earlier session left in $wt"
     return 0
   fi
