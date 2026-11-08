@@ -298,6 +298,7 @@ module OpenSpecOrchestrator
   # The next automatic retry of the change quarantined in `file` (log/blocked/<change>.json):
   # { 'retry' => its number, 'limit' => dispatch.blocked_retries, 'at' => when it is due },
   # or nil when none will come: retries are off, its reason needs a human, or it used them all.
+  # Each retry doubles the wait (hours * 2^(retry-1)): 1h, 2h, 4h, ...
   def next_retry(file, record, limit: OpenSpecSettings.get(ROOT, 'dispatch.blocked_retries'),
                  hours: OpenSpecSettings.get(ROOT, 'dispatch.blocked_retry_hours'))
     used = blocked_retries(File.basename(file, '.json'))
@@ -308,7 +309,7 @@ module OpenSpecOrchestrator
     rescue ArgumentError
       File.mtime(file) # a record written by hand
     end
-    { 'retry' => used + 1, 'limit' => limit, 'at' => since + (hours * 3600) }
+    { 'retry' => used + 1, 'limit' => limit, 'at' => since + (hours * 3600 * (1 << used)) }
   end
 
   # What a status line says about a quarantined change's retries; nil while retries are off.

@@ -187,6 +187,34 @@ module Proposals
     end
   end
 
+  def max_pending_backlog
+    raw = settings.dig('exploration', 'max_pending_backlog')
+    raw.nil? ? 10 : raw.to_i
+  end
+
+  def max_ready = OpenSpecSettings.get(O::ROOT, 'dispatch.max_ready')
+
+  def ready_count
+    main = OpenSpecSettings.main_root(O::ROOT)
+    Dir.glob(File.join(main, 'log', 'ready_to_merge', '*.json')).size
+  end
+
+  def pending_backlog_count(backlog)
+    main = OpenSpecSettings.main_root(O::ROOT)
+    blocked = Dir.glob(File.join(main, 'log', 'blocked', '*.json')).map { |f| File.basename(f, '.json') }
+    archived = O.archived_changes
+    names = backlog.filter_map { |i| i['change_name'].to_s if i.is_a?(Hash) && !i['change_name'].to_s.empty? }.uniq
+    (names - blocked - archived).size
+  end
+
+  def can_queue?(backlog)
+    mr = max_ready
+    return false if mr.positive? && ready_count >= mr
+
+    mp = max_pending_backlog
+    !mp.positive? || pending_backlog_count(backlog) < mp
+  end
+
   def review
     items = read(FILE)
     backlog = read(O::BACKLOG_FILE)
@@ -215,16 +243,19 @@ module Proposals
         end
       end
       if item['status'] == 'approved'
-        unless backlog.any? { |b| b['change_name'] == item['change_name'] } ||
-               history.any? { |h| h['change_name'] == item['change_name'] } ||
-               archived?(item['change_name'])
+        already = backlog.any? { |b| b['change_name'] == item['change_name'] } ||
+                  history.any? { |h| h['change_name'] == item['change_name'] } ||
+                  archived?(item['change_name'])
+        if already || can_queue?(backlog)
           # queued_at lets the dispatcher age the item (dispatch.aging_hours of config/pipeline.yaml).
-          backlog << item.reject { |k, _| OWN_FIELDS.include?(k) }.merge('queued_at' => now)
+          backlog << item.reject { |k, _| OWN_FIELDS.include?(k) }.merge('queued_at' => now) unless already
+          item['status'] = 'queued'
+          item['queued_at'] = now
+          O.emit('proposal.queued', change: item['change_name'], by: item.dig('review', 'by') || 'human')
+          counts['queued'] += 1
+        else
+          counts['approved (held: backlog or merge queue full)'] += 1
         end
-        item['status'] = 'queued'
-        item['queued_at'] = now
-        O.emit('proposal.queued', change: item['change_name'], by: item.dig('review', 'by') || 'human')
-        counts['queued'] += 1
       end
       if item['status'] == 'queued' && archived?(item['change_name'])
         item['status'] = 'integrated'

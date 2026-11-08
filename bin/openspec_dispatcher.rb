@@ -32,6 +32,7 @@ class OpenSpecDispatcher
   FETCH_EVERY_SECONDS = 30
   # config/pipeline.yaml (bin/lib/settings.rb), read once per run.
   WORKERS = OpenSpecSettings.get(O::ROOT, 'dispatch.workers')
+  MAX_READY = OpenSpecSettings.get(O::ROOT, 'dispatch.max_ready')
   # With no worker running, origin is fetched this often, not on every pass: a merge
   # cannot land sooner than the merger looks for ready changes.
   IDLE_FETCH_SECONDS = OpenSpecSettings.get(O::ROOT, 'dispatch.merge_interval_seconds')
@@ -129,18 +130,24 @@ class OpenSpecDispatcher
       @results.delete_if { |change, result| result == :ready && (O.read_json(O.rebuild_file(change)) || {})['requested'] }
       pending = backlog.reject { |item| @threads.key?(item['change_name']) || @results.key?(item['change_name']) }
       eligible = pending.select { |item| eligible?(item) }
+      ready_count = Dir.glob(File.join(O::READY_DIR, '*.json')).size
+      # Each running worker may also finish into log/ready_to_merge/, so count both ready
+      # manifests and in-flight workers against MAX_READY.
+      saturated = MAX_READY.positive? && (ready_count + @threads.size) >= MAX_READY
       publish_results!
 
       if O.paused? || @engines_down
         O.emit(O.paused? ? 'dispatcher.paused' : 'dispatcher.engines_down') if @threads.empty?
         break if @threads.empty?
-      else
-        eligible.first([@max_workers - @threads.size, 0].max).each { |item| start(item) }
+      elsif !saturated
+        slots = [@max_workers - @threads.size, 0].max
+        slots = [slots, MAX_READY - ready_count - @threads.size].min if MAX_READY.positive?
+        eligible.first([slots, 0].max).each { |item| start(item) }
       end
 
-      if @threads.empty? && (eligible.empty? || O.paused?)
-        waiting = pending.select { |i| waiting_on_flight?(i, by_name) }
-        break unless @wait && !O.paused? && waiting.any? && Dir.glob(File.join(O::READY_DIR, '*.json')).any?
+      if @threads.empty? && (eligible.empty? || saturated || O.paused?)
+        waiting = saturated && eligible.any? ? eligible : pending.select { |i| waiting_on_flight?(i, by_name) }
+        break unless @wait && !O.paused? && waiting.any? && ready_count.positive?
 
         wait_deadline ||= Time.now + @wait
         if Time.now >= wait_deadline
@@ -306,19 +313,24 @@ class OpenSpecDispatcher
                      building.flat_map { |c| claimed(c, by_name[c]) }
     deferrals = O.read_json(DEFERRALS_FILE) || {}
     free = running ? [running['workers'].to_i - building.size, 0].max : @max_workers
+    ready_slots = MAX_READY.positive? ? [MAX_READY - ready.size - building.size, 0].max : nil
+    can_start = ready_slots ? [free, ready_slots].min : free
     rows = @invalid_items.map { |item| invalid_dry_run_row(item) }
     rows += backlog.reject { |i| @archived.include?(i['change_name']) }.map do |item|
       dry_run_row(item, waited, running, building, ready, in_flight_caps, deferrals, by_name)
     end
     rows.select { |r| r['state'] == 'ready' }.each_with_index do |r, n|
-      r['next'] = n < free
+      r['next'] = !O.paused? && n < can_start
       r['why'] = if O.paused? then 'starts once log/PAUSE is gone'
-                 elsif n < free then running ? 'next: starts as soon as this dispatch looks again' : 'next: starts in the next dispatch'
+                 elsif n < can_start then running ? 'next: starts as soon as this dispatch looks again' : 'next: starts in the next dispatch'
+                 elsif ready_slots&.zero? || (ready_slots && n >= ready_slots && n < free)
+                   "ready: waits for the merger (#{ready.size} of #{MAX_READY} in log/ready_to_merge/)"
                  else 'ready: starts when a worker is free'
                  end
     end
     if @json
-      out.puts JSON.pretty_generate({ 'paused' => O.paused?, 'dispatch' => running, 'free_workers' => free, 'items' => rows })
+      out.puts JSON.pretty_generate({ 'paused' => O.paused?, 'dispatch' => running, 'free_workers' => free,
+                                      'ready_to_merge' => ready.size, 'max_ready' => MAX_READY, 'items' => rows })
     else
       out.puts dry_run_text(rows, running, building, free)
     end
@@ -1229,10 +1241,13 @@ class OpenSpecDispatcher
   # --------------------------------------------------------------------- agent
 
   # One call may try every engine of its role, each 1 + limits.agent_retries times,
-  # each bounded by limits.agent_seconds (plus timeout's kill grace).
+  # each bounded by limits.agent_seconds (plus timeout's kill grace), with exponential
+  # backoff between retries of the same engine (delay, 2*delay, 4*delay, ...).
   def agent_budget(engine)
-    attempts = [engine.to_s.split(',').size, 1].max * (AGENT_RETRIES + 1)
-    (attempts * (AGENT_TIMEOUT + 60)) + ((attempts - 1) * RETRY_DELAY) + 120
+    engines = [engine.to_s.split(',').size, 1].max
+    attempts = engines * (AGENT_RETRIES + 1)
+    retry_wait = engines * RETRY_DELAY * ((1 << AGENT_RETRIES) - 1)
+    (attempts * (AGENT_TIMEOUT + 60)) + retry_wait + 120
   end
 
   # Runs one agent call and returns the engine that ran it. Its agent.exit event

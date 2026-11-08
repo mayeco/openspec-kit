@@ -14,6 +14,10 @@ base_branch: master # OPENSPEC_BASE_BRANCH
 
 dispatch:
   workers: 2 # changes one dispatch builds in parallel; OPENSPEC_WORKERS
+  # While this many built changes wait for the merger in log/ready_to_merge/, the
+  # dispatcher starts no new worker and the cycle queues no new proposal or defect,
+  # so a slow merger is not outrun by new builds. 0: no cap. OPENSPEC_MAX_READY
+  max_ready: 4
   wait_seconds: 3600 # how long a cycle's dispatch waits while changes wait on merges; OPENSPEC_WAIT_TIMEOUT
   merge_interval_seconds: 10 # how often a watching merger looks for ready changes, and an idle dispatcher fetches origin; OPENSPEC_MERGE_INTERVAL
   # A change whose code no longer rebases onto the base branch (another change edited
@@ -33,7 +37,7 @@ dispatch:
   # Never a policy_violation, spec_ambiguity, risk_review, missing_child_commits or a
   # system failure: those wait for a human. 0: never. OPENSPEC_BLOCKED_RETRIES
   blocked_retries: 1
-  # How long a quarantined change waits before that retry. OPENSPEC_BLOCKED_RETRY_HOURS
+  # How long a quarantined change waits before its first automatic retry (doubled on each retry after). OPENSPEC_BLOCKED_RETRY_HOURS
   blocked_retry_hours: 1
 
 limits:
@@ -48,7 +52,7 @@ limits:
   # left changes is followed by one told what it changed, to continue from there.
   # 0: no retry. AGENT_RETRIES
   agent_retries: 1
-  agent_retry_delay_seconds: 120 # wait before trying the same agent again; AGENT_RETRY_DELAY_SECONDS
+  agent_retry_delay_seconds: 120 # initial wait before trying the same agent again (doubled on each extra retry); AGENT_RETRY_DELAY_SECONDS
   agent_budget_usd: 5 # Claude Code's spending cap per call; AGENT_MAX_BUDGET_USD
   gate_seconds: 2700 # one repository's gates, in the dispatcher and the merger; OPENSPEC_GATE_TIMEOUT
   lease_seconds: 7200 # a change's lease is stale after this; OPENSPEC_LEASE_TTL

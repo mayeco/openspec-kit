@@ -17,6 +17,10 @@ max_consecutive_failures: 2
 exploration:
   minutes: 15 # at least this much of the budget goes to exploring
   max_new_backlog_items_per_cycle: 3 # findings queued or proposed per cycle; the rest stay in the report
+  # While this many unblocked items wait in config/agent_backlog.json, the cycle and
+  # the visual session hold off queuing new defects and proposals, and proposals.rb
+  # keeps approved proposals for a later cycle. 0: no cap.
+  max_pending_backlog: 10
   # The strategies, one per cycle, are in config/exploration.yaml.
 
 roadmap:

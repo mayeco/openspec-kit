@@ -160,7 +160,15 @@ module VisualQA
     minutes = (settings['minutes'] || 40).to_i
     max = (cycle.dig('exploration', 'max_new_backlog_items_per_cycle') || 3).to_i
     approval = cycle.dig('proposals', 'approval') || 'jev'
+    sat = CyclePrompt.saturation(cycle)
     skills = Array(cycle.dig('qa', 'skills'))
+    findings_bullet = if sat['saturated']
+                        "Saturated (#{sat['reasons'].join('; ')}): record only `critical` regressions found in the queued " \
+                        'checks; hold off queuing other defects and proposals this session and keep them in the report until the queue drains.'
+                      else
+                        'Defects and regressions: backlog items (`openspec-kit-qa`, "Record a finding"); improvements and ' \
+                        "missing capabilities: proposals in `config/agent_proposals.json` (approval `#{approval}`). At most #{max} this session."
+                      end
     checks = if items.empty?
                'Nothing is queued: spend the session on the exploration below.'
              else
@@ -192,7 +200,7 @@ module VisualQA
 
       ## Findings
 
-      - Defects and regressions: backlog items (`openspec-kit-qa`, "Record a finding"); improvements and missing capabilities: proposals in `config/agent_proposals.json` (approval `#{approval}`). At most #{max} this session.
+      - #{findings_bullet}
       - Evidence (screenshots, console and network logs): `log/cycle/evidence/visual-#{stamp}/`. Report: `log/cycle/reports/visual-#{stamp}.md`.
       - The application's QA skills: #{skills.empty? ? 'none configured (`qa.skills` in `config/cycle.yaml`)' : skills.map { |k| "`#{k}`" }.join(', ')}.
       - Lessons: #{OpenSpecMemory.plan_line(ROOT)}

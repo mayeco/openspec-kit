@@ -99,10 +99,32 @@ module CyclePrompt
     chosen
   end
 
+  # How full the backlog and the merge queue are, against exploration.max_pending_backlog
+  # of config/cycle.yaml and dispatch.max_ready of config/pipeline.yaml.
+  def saturation(cycle = load_yaml(CYCLE))
+    main = OpenSpecSettings.main_root(ROOT)
+    ready = Dir.glob(File.join(main, 'log', 'ready_to_merge', '*.json')).size
+    max_ready = OpenSpecSettings.get(ROOT, 'dispatch.max_ready')
+    blocked = Dir.glob(File.join(main, 'log', 'blocked', '*.json')).map { |f| File.basename(f, '.json') }
+    archived = Dir.glob(File.join(ROOT, 'openspec', 'changes', 'archive', '*')).map { |p| File.basename(p).sub(/\A\d{4}-\d{2}-\d{2}-/, '') }
+    raw = File.exist?(File.join(ROOT, 'config', 'agent_backlog.json')) ? JSON.parse(File.read(File.join(ROOT, 'config', 'agent_backlog.json'))) : []
+    items = (raw.is_a?(Hash) ? Array(raw['changes']) : Array(raw)).select { |i| i.is_a?(Hash) && i['change_name'].to_s != '' }
+    pending = items.map { |i| i['change_name'] }.uniq - blocked - archived
+    max_pending = cycle.dig('exploration', 'max_pending_backlog').nil? ? 10 : cycle.dig('exploration', 'max_pending_backlog').to_i
+    reasons = []
+    reasons << "#{ready} of #{max_ready} built change(s) waiting in `log/ready_to_merge/` (`dispatch.max_ready`)" if max_ready.positive? && ready >= max_ready
+    reasons << "#{pending.size} of #{max_pending} pending item(s) in `config/agent_backlog.json` (`exploration.max_pending_backlog`)" if max_pending.positive? && pending.size >= max_pending
+    { 'saturated' => reasons.any?, 'ready' => ready, 'max_ready' => max_ready,
+      'pending' => pending.size, 'max_pending' => max_pending, 'reasons' => reasons }
+  rescue JSON::ParserError
+    { 'saturated' => false, 'ready' => 0, 'max_ready' => 0, 'pending' => 0, 'max_pending' => 0, 'reasons' => [] }
+  end
+
   def render(strategy, cycle, dispatch_pid)
     exploration = cycle['exploration'] || {}
     roadmap = cycle['roadmap'] || {}
     approval = cycle.dig('proposals', 'approval') || 'jev'
+    sat = saturation(cycle)
     strategy ||= { 'slug' => 'none', 'name' => 'None this cycle', 'kind' => 'defects',
                    'directive' => 'Every strategy of config/exploration.yaml needs a browser, so the visual QA ' \
                                   'session explores them. Spend the exploration time on the regression sweep.' }
@@ -115,9 +137,19 @@ module CyclePrompt
                else
                  'none is running; the script dispatches after you exit.'
                end
+    findings_line = if sat['saturated']
+                      "saturated (#{sat['reasons'].join('; ')}): record only `critical` regressions found while " \
+                      'verifying integrated changes; hold off queuing other defects and proposals this cycle and ' \
+                      'keep them in `needs_triage` and the report until the queue drains'
+                    else
+                      "#{format(KINDS[kind], max: max)}. Defects found outside this strategy follow the same rule; " \
+                      'improvements and missing capabilities always become proposals'
+                    end
     roadmap_file = roadmap['file'].to_s
     roadmap_path = File.join(ROOT, roadmap_file)
-    roadmap_line = if roadmap_file.empty? || !File.file?(roadmap_path)
+    roadmap_line = if sat['saturated']
+                     "saturated (#{sat['reasons'].join('; ')}): skip \"Propose from the roadmap\" this cycle."
+                   elsif roadmap_file.empty? || !File.file?(roadmap_path)
                      'none (`roadmap.file` in `config/cycle.yaml` is empty or missing): skip "Propose from the roadmap".'
                    elsif File.read(roadmap_path).include?('{{')
                      "`#{roadmap_file}` still has `{{...}}` placeholders: skip \"Propose from the roadmap\" and say in " \
@@ -138,7 +170,7 @@ module CyclePrompt
 
       #{strategy['directive'].to_s.strip.gsub(/^/, '  ')}
 
-      - **Its findings**: #{format(KINDS[kind], max: max)}. Defects found outside this strategy follow the same rule; improvements and missing capabilities always become proposals.
+      - **Its findings**: #{findings_line}.
       - **Roadmap**: #{roadmap_line}
       - **Proposals** (`config/agent_proposals.json`, approval `#{approval}`): #{APPROVAL.fetch(approval, APPROVAL['human'])}. Add proposals with `"status": "proposed"` only; never change the status of an existing one.
       - **Visual QA**: #{visual_line(cycle)}

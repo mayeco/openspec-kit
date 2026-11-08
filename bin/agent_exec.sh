@@ -389,8 +389,9 @@ $(continuation_note "$engine ($reason)")"
     fi
     try=$((try + 1))
     [ "$try" -gt "$RETRIES" ] && break
-    echo "agent_exec: trying $engine again ($try of $RETRIES) in ${RETRY_DELAY}s" >&2
-    sleep "$RETRY_DELAY"
+    wait_s=$(( RETRY_DELAY * (1 << (try - 1)) ))
+    echo "agent_exec: trying $engine again ($try of $RETRIES) in ${wait_s}s" >&2
+    sleep "$wait_s"
   done
   next="${LIST[$((i + 1))]:-}"
   [ -n "$next" ] && echo "agent_exec: $engine failed (exit $rc); trying $next" >&2
